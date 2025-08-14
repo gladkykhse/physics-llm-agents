@@ -7,7 +7,7 @@
 **🎓 Project Type:** MSc Graduation Project  
 **📘 Program:** Data Science and Artificial Intelligence  
 **🏛 Institution:** Eindhoven University of Technology  
-**🔬 Research Group:** Data and Artificial Intelligence Cluster  
+**🔬 Research Cluster:** Data and Artificial Intelligence  
 
 ---
 
