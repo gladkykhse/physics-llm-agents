@@ -212,3 +212,7 @@ benchmarks/MMLU_conceptual_physics
 benchmarks/MMLU_high_school_physics
 benchmarks/SciEval
 benchmarks/scimat2
+benchmarks/MMMU
+benchmarks/OlympiadBench
+benchmarks/Physics
+
