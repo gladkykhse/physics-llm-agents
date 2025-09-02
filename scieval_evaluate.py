@@ -112,7 +112,9 @@ def save_json(obj: dict[str, object]) -> None:
 
 
 if __name__ == "__main__":
-    df = pl.read_parquet("artifacts/evaluation.parquet")
+    df = pl.read_parquet("artifacts/SciEval_evaluation_20250828_152313.parquet")
+
     results = parse_results_to_json(df)
+
     save_json(results)
     plot_results(results)
