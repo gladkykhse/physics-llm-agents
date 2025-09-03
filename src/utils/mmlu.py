@@ -1,4 +1,5 @@
 import polars as pl
+import matplotlib.pyplot as plt
 
 SUBSETS = [
     "MMLU_college_physics",
@@ -61,3 +62,40 @@ def preprocess_questions(df: pl.DataFrame) -> pl.DataFrame:
         )
         .alias("question")
     )
+
+
+def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
+    df = df.with_columns(
+        pl.col("answer_standard_system_prompt").str.extract(r"([ABCD])").alias("std_ans"),
+        pl.col("answer_cot_system_prompt").str.extract(r"(?i)answer.*?([ABCD])").str.to_uppercase().alias("cot_ans"),
+        pl.col("answer").map_elements(lambda x: [NUM_TO_LETTER[x]], return_dtype=pl.List(pl.String)),
+    )
+
+    df = df.with_columns(
+        correct_std=pl.col("answer").list.contains(pl.col("std_ans")),
+        correct_cot=pl.col("answer").list.contains(pl.col("cot_ans")),
+    )
+
+    overall_standard = float(df["correct_std"].mean())
+    overall_cot = float(df["correct_cot"].mean())
+
+    results_json = {
+        "standard": {
+            "overall": round(overall_standard, 4),
+        },
+        "cot": {
+            "overall": round(overall_cot, 4),
+        },
+    }
+
+    return results_json
+
+def plot_results(results_json: dict[str, object], filename: str) -> None:
+    overall_standard = results_json["standard"]["overall"]
+    overall_cot = results_json["cot"]["overall"]
+
+    plt.bar(["Standard", "CoT"], [overall_standard, overall_cot], color=["tab:blue", "tab:orange"])
+    plt.title("Overall Accuracy")
+    plt.ylabel("Accuracy")
+    plt.tight_layout()
+    plt.savefig(filename)
