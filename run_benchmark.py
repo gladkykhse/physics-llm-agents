@@ -19,7 +19,7 @@ async def run_mmlu(model: str, subset: str) -> None:
             evaluation_df = await openai_api.run_batched_completion(
                 all_requests=questions, system_prompt=prompt_fn(), model=model
             )
-        elif model in {"llama3:8b"}:
+        elif model in {"llama3:8b", "mistral:7b", "gpt-oss:20b"}:
             evaluation_df = ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
@@ -43,7 +43,7 @@ async def run_scieval(model: str) -> None:
             evaluation_df = await openai_api.run_batched_completion(
                 all_requests=questions, system_prompt=prompt_fn(), model=model
             )
-        elif model in {"llama3:8b"}:
+        elif model in {"mistral:7b", "llama3:8b", "gpt-oss:20b"}:
             evaluation_df = ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         "--model",
         type=str,
         default="llama3:8b",
-        choices=["llama3:8b", "gpt-4o-mini"],
+        choices=["llama3:8b", "mistral:7b", "gpt-oss:20b", "gpt-4o-mini"],
         help="The name of the benchmark you want to run",
     )
     parser.add_argument(
