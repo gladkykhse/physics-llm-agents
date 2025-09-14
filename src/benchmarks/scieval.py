@@ -1,6 +1,6 @@
-import polars as pl
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import polars as pl
 
 
 def load_dataframe(source: str = "benchmarks/SciEval/test/data-00000-of-00001.arrow") -> pl.DataFrame:

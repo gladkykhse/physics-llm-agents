@@ -1,10 +1,10 @@
-import os
 import argparse
+import os
+
 import polars as pl
 
-from src.utils import scieval, mmlu
+from src.benchmarks import mmlu, scieval
 from src.utils.helpers import save_json
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

@@ -3,6 +3,7 @@ import os
 import time
 
 import aiohttp
+import polars as pl
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,7 +38,7 @@ async def openai_completion_request(
 
 async def run_batched_completion(
     all_requests: list[str], system_prompt: str | list = "", model: str = "gpt-4o-mini"
-) -> list[dict]:
+) -> pl.DataFrame:
     if isinstance(system_prompt, list) and len(all_requests) != len(system_prompt):
         raise ValueError(
             "`system_prompt` and `requests_batch` must be both lists of the same length if you want to use different system prompts for different requests."
@@ -75,4 +76,9 @@ async def run_batched_completion(
             if remaining > 0 and end_idx < n:
                 await asyncio.sleep(remaining)
 
-    return results
+    return pl.DataFrame(
+        {
+            "question": [response["initial_request"] for response in results],
+            "answer": [response["choices"][0]["message"]["content"] for response in results],
+        }
+    )

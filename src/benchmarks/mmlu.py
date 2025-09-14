@@ -1,5 +1,5 @@
-import polars as pl
 import matplotlib.pyplot as plt
+import polars as pl
 
 SUBSETS = [
     "MMLU_college_physics",
@@ -89,6 +89,7 @@ def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
     }
 
     return results_json
+
 
 def plot_results(results_json: dict[str, object], filename: str) -> None:
     overall_standard = results_json["standard"]["overall"]
