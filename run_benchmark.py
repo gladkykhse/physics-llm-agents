@@ -24,7 +24,7 @@ async def run_mmlu(model: str, subset: str) -> None:
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_mmlu = df_mmlu.join(evaluation_df, on="question")
 
-    os.makedirs("artifacts", exist_ok=True)
+    os.makedirs(f"artifacts/{subset}_evaluation", exist_ok=True)
     df_mmlu.write_parquet(
         file=f"artifacts/{subset}_evaluation/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
     )
@@ -46,7 +46,7 @@ async def run_scieval(model: str) -> None:
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_scieval = df_scieval.join(evaluation_df, on="question")
 
-    os.makedirs("artifacts", exist_ok=True)
+    os.makedirs("artifacts/SciEval_evaluation", exist_ok=True)
     df_scieval.write_parquet(
         file=f"artifacts/SciEval_evaluation/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
     )
