@@ -1,10 +1,12 @@
+import os
+import datasets
 import matplotlib.pyplot as plt
 import polars as pl
 
 SUBSETS = [
-    "MMLU_college_physics",
-    "MMLU_conceptual_physics",
-    "MMLU_high_school_physics",
+    "college_physics",
+    "conceptual_physics",
+    "high_school_physics",
 ]
 
 NUM_TO_LETTER = {
@@ -22,7 +24,15 @@ LETTER_TO_NUM = {
 }
 
 
-def load_dataframe(source: str = "benchmarks/MMLU_college_physics/test/data-00000-of-00001.arrow") -> pl.DataFrame:
+def get_dataset(subset: str = "college_physics", save_dir: str = "benchmarks") -> str:
+    data_path = os.path.join(save_dir, "MMLU_evaluation", subset)
+    if not os.path.isdir(data_path):
+        os.makedirs(data_path)
+        datasets.load_dataset(path="cais/mmlu", name=subset).save_to_disk(data_path)
+    return data_path
+
+
+def load_dataframe(source: str = "benchmarks/MMLU_evaluation/college_physics/test/data-00000-of-00001.arrow") -> pl.DataFrame:
     return pl.read_ipc_stream(source=source)
 
 

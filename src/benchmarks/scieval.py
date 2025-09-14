@@ -1,6 +1,16 @@
+import os
+import datasets
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+
+
+def get_dataset(save_dir: str = "benchmarks") -> str:
+    data_path = os.path.join(save_dir, "SciEval")
+    if not os.path.isdir(data_path):
+        os.makedirs(data_path)
+        datasets.load_dataset("OpenDFM/SciEval").save_to_disk(data_path)
+    return data_path
 
 
 def load_dataframe(source: str = "benchmarks/SciEval/test/data-00000-of-00001.arrow") -> pl.DataFrame:

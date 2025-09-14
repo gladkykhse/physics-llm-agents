@@ -8,8 +8,9 @@ from src.models import ollama, openai_api
 
 
 async def run_mmlu(model: str, subset: str) -> None:
-    path = os.path.join("benchmarks", subset, "test", "data-00000-of-00001.arrow")
-    df_mmlu = mmlu.preprocess_questions(mmlu.load_dataframe(source=path))
+    dataset_path = mmlu.get_dataset(subset=subset, save_dir="benchmarks")
+    file_path = os.path.join(dataset_path, "test", "data-00000-of-00001.arrow")
+    df_mmlu = mmlu.preprocess_questions(mmlu.load_dataframe(source=file_path))
 
     for prompt_fn in (mmlu.standard_system_prompt, mmlu.cot_system_prompt):
         questions = df_mmlu["question"].to_list()
@@ -24,14 +25,16 @@ async def run_mmlu(model: str, subset: str) -> None:
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_mmlu = df_mmlu.join(evaluation_df, on="question")
 
-    os.makedirs(f"artifacts/{subset}_evaluation", exist_ok=True)
+    os.makedirs(f"artifacts/MMLU_evaluation/{subset}", exist_ok=True)
     df_mmlu.write_parquet(
-        file=f"artifacts/{subset}_evaluation/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
+        file=f"artifacts/MMLU_evaluation/{subset}/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
     )
 
 
 async def run_scieval(model: str) -> None:
-    df_scieval = scieval.load_dataframe()
+    dataset_path = scieval.get_dataset(save_dir="benchmarks")
+    file_path = os.path.join(dataset_path, "test", "data-00000-of-00001.arrow")
+    df_scieval = scieval.load_dataframe(source=file_path)
 
     for prompt_fn in (scieval.standard_system_prompt, scieval.cot_system_prompt):
         questions = df_scieval["question"].to_list()
@@ -77,7 +80,7 @@ if __name__ == "__main__":
         "-s",
         "--subset",
         type=str,
-        default="MMLU_college_physics",
+        default="college_physics",
         choices=mmlu.SUBSETS,
         help="Subset of the MMLU benchmark you want to run",
     )
