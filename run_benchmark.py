@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from src.benchmarks import mmlu, scieval
-from src.models import ollama, openai_api
+from src.models import ollama, openai_api, vllm
 from src.utils.helpers import load_yaml
 
 BENCHMARK_CFG = load_yaml("config/benchmark.yaml")
@@ -24,6 +24,8 @@ async def run_mmlu(model: str, subset: str) -> None:
             )
         elif model in BENCHMARK_CFG["ollama_models"]:
             evaluation_df = ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
+        elif model in BENCHMARK_CFG["vllm_models"]:
+            evaluation_df = vllm.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_mmlu = df_mmlu.join(evaluation_df, on="question")
@@ -48,6 +50,8 @@ async def run_scieval(model: str) -> None:
             )
         elif model in BENCHMARK_CFG["ollama_models"]:
             evaluation_df = ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
+        elif model in BENCHMARK_CFG["vllm_models"]:
+            evaluation_df = vllm.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_scieval = df_scieval.join(evaluation_df, on="question")
@@ -68,7 +72,7 @@ if __name__ == "__main__":
         "--model",
         type=str,
         default="llama3:8b",
-        choices=BENCHMARK_CFG["openai_models"] + BENCHMARK_CFG["ollama_models"],
+        choices=BENCHMARK_CFG["openai_models"] + BENCHMARK_CFG["ollama_models"] + BENCHMARK_CFG["vllm_models"],
         help="The name of the benchmark you want to run",
     )
     parser.add_argument(
