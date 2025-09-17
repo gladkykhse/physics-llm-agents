@@ -6,7 +6,9 @@ from openai import OpenAI
 from openai.types.chat.chat_completion import ChatCompletion
 
 load_dotenv()
-client = OpenAI(base_url=f"{os.environ['VLLM_HOST']}:{os.environ['VLLM_PORT']}/v1", api_key=os.environ["VLLM_API_KEY"])
+client = OpenAI(
+    base_url=f"http://{os.environ['VLLM_HOST']}:{os.environ['VLLM_PORT']}/v1", api_key=os.environ["VLLM_API_KEY"]
+)
 
 
 def vllm_completion_request(
