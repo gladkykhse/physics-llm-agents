@@ -5,6 +5,9 @@ from datetime import datetime
 
 from src.benchmarks import mmlu, scieval
 from src.models import ollama, openai_api
+from src.utils.helpers import load_yaml
+
+BENCHMARK_CFG = load_yaml("config/benchmark.yaml")
 
 
 async def run_mmlu(model: str, subset: str) -> None:
@@ -15,11 +18,11 @@ async def run_mmlu(model: str, subset: str) -> None:
     for prompt_fn in (mmlu.standard_system_prompt, mmlu.cot_system_prompt):
         questions = df_mmlu["question"].to_list()
 
-        if model in {"gpt-4o-mini"}:
+        if model in BENCHMARK_CFG["openai_models"]:
             evaluation_df = await openai_api.run_batched_completion(
                 all_requests=questions, system_prompt=prompt_fn(), model=model
             )
-        elif model in {"llama3:8b", "mistral:7b", "gpt-oss:20b"}:
+        elif model in BENCHMARK_CFG["ollama_models"]:
             evaluation_df = ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
@@ -39,11 +42,11 @@ async def run_scieval(model: str) -> None:
     for prompt_fn in (scieval.standard_system_prompt, scieval.cot_system_prompt):
         questions = df_scieval["question"].to_list()
 
-        if model in {"gpt-4o-mini"}:
+        if model in BENCHMARK_CFG["openai_models"]:
             evaluation_df = await openai_api.run_batched_completion(
                 all_requests=questions, system_prompt=prompt_fn(), model=model
             )
-        elif model in {"mistral:7b", "llama3:8b", "gpt-oss:20b"}:
+        elif model in BENCHMARK_CFG["ollama_models"]:
             evaluation_df = ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
@@ -65,7 +68,7 @@ if __name__ == "__main__":
         "--model",
         type=str,
         default="llama3:8b",
-        choices=["llama3:8b", "mistral:7b", "gpt-oss:20b", "gpt-4o-mini"],
+        choices=BENCHMARK_CFG["openai_models"] + BENCHMARK_CFG["ollama_models"],
         help="The name of the benchmark you want to run",
     )
     parser.add_argument(
