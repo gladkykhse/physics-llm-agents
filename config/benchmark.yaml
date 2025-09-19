@@ -10,6 +10,8 @@ ollama_models:
   - phi4-mini-reasoning
   - phi4-reasoning
   - llama3.1:8b
+  - qwen2-math:7b
+  - mightykatun/qwen2.5-math:7b
 
 vllm_models:
   - meta-llama/Meta-Llama-3-8B-Instruct
