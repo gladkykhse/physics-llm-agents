@@ -9,6 +9,7 @@ ollama_models:
   - deepseek-r1:8b
   - phi4-mini-reasoning
   - phi4-reasoning
+  - llama3.1:8b
 
 vllm_models:
   - meta-llama/Meta-Llama-3-8B-Instruct
