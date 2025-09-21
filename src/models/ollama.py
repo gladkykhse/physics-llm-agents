@@ -32,7 +32,7 @@ async def run_completion(
         sys_prompts = [system_prompt] * len(all_requests)
 
     results: list[str] = []
-    client = AsyncClient()
+    client = AsyncClient()  # single shared client; no close() needed currently
     for i in range(0, len(all_requests), batch_size):
         reqs_batch = all_requests[i : i + batch_size]
         prompts_batch = sys_prompts[i : i + batch_size]
@@ -42,6 +42,5 @@ async def run_completion(
         ]
         answers = await asyncio.gather(*tasks)  # preserves order
         results.extend(answers)
-    await client.close()
 
     return pl.DataFrame({"question": all_requests, "answer": results})
