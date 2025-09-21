@@ -206,13 +206,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Benchmark Directories
-benchmarks/MMLU_college_physics
-benchmarks/MMLU_conceptual_physics
-benchmarks/MMLU_high_school_physics
-benchmarks/SciEval
-benchmarks/scimat2
-benchmarks/MMMU
-benchmarks/OlympiadBench
-benchmarks/Physics
+# Benchmark Directory
+benchmarks
+
+# Data Directory
+data/
 

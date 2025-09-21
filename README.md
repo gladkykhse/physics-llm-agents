@@ -5,3 +5,7 @@
 **📘 Program:** Data Science and Artificial Intelligence  
 **🏛 Institution:** Eindhoven University of Technology  
 **🔬 Research Cluster:** Data and Artificial Intelligence  
+
+## Ollama setup
+
+## vLLM setup

@@ -1,34 +1,48 @@
+import asyncio
+
 import polars as pl
-from ollama import ChatResponse, chat
+from ollama import AsyncClient
 
 
-def ollama_completion_request(request: str, system_prompt: str, model: str = "llama3:8b") -> ChatResponse:
+async def ollama_completion_request(
+    client: AsyncClient,
+    request: str,
+    system_prompt: str,
+    model: str = "llama3:8b",
+) -> str:
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": request})
 
-    return chat(
+    resp = await client.chat(
         model=model,
         messages=messages,
         options={"temperature": 0.0},
     )
+    return resp["message"]["content"]
 
 
-def run_completion(all_requests: list[str], system_prompt: str | list = "", model: str = "llama3:8b") -> pl.DataFrame:
-    if isinstance(system_prompt, list) and len(all_requests) != len(system_prompt):
-        raise ValueError(
-            "`system_prompt` and `requests_batch` must be both lists of the same length if you want to use different system prompts for different requests."
-        )
+async def run_completion(
+    all_requests: list[str],
+    system_prompt: str | list = "",
+    model: str = "llama3:8b",
+    batch_size: int = 8,
+) -> pl.DataFrame:
+    if isinstance(system_prompt, list):
+        sys_prompts = system_prompt
+    else:
+        sys_prompts = [system_prompt] * len(all_requests)
 
-    results: list[dict] = []
-    for request in all_requests:
-        response = ollama_completion_request(request=request, system_prompt=system_prompt, model=model)
-        results.append(response["message"]["content"])
+    results: list[str] = []
+    async with AsyncClient() as client:
+        for i in range(0, len(all_requests), batch_size):
+            reqs_batch = all_requests[i : i + batch_size]
+            prompts_batch = sys_prompts[i : i + batch_size]
+            tasks = [
+                ollama_completion_request(client, req, sp, model=model) for req, sp in zip(reqs_batch, prompts_batch)
+            ]
+            answers = await asyncio.gather(*tasks)
+            results.extend(answers)
 
-    return pl.DataFrame(
-        {
-            "question": all_requests,
-            "answer": results,
-        }
-    )
+    return pl.DataFrame({"question": all_requests, "answer": results})

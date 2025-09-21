@@ -1,0 +1,5 @@
+openstax:
+  git_repo: https://github.com/openstax/osbooks-university-physics-bundle.git
+  raw_data_path: data/raw/openstax
+
+  extracted_xml_dir: data/extracted/openstax

@@ -32,7 +32,11 @@ async def run_mmlu(model: str, subset: str) -> None:
 
     os.makedirs(f"artifacts/MMLU_evaluation/{subset}", exist_ok=True)
     df_mmlu.write_parquet(
-        file=f"artifacts/MMLU_evaluation/{subset}/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
+        file=os.path.join(
+            BENCHMARK_CFG["outputs_dir"],
+            "MMLU_evaluation",
+            f"{subset}/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet",
+        )
     )
 
 
@@ -58,7 +62,11 @@ async def run_scieval(model: str) -> None:
 
     os.makedirs("artifacts/SciEval_evaluation", exist_ok=True)
     df_scieval.write_parquet(
-        file=f"artifacts/SciEval_evaluation/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
+        file=os.path.join(
+            BENCHMARK_CFG["outputs_dir"],
+            "SciEval_evaluation",
+            f"{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet",
+        )
     )
 
 
