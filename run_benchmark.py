@@ -23,7 +23,9 @@ async def run_mmlu(model: str, subset: str) -> None:
                 all_requests=questions, system_prompt=prompt_fn(), model=model
             )
         elif model in BENCHMARK_CFG["ollama_models"]:
-            evaluation_df = await ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=32)
+            evaluation_df = await ollama.run_completion(
+                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=32
+            )
         elif model in BENCHMARK_CFG["vllm_models"]:
             evaluation_df = vllm.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 
@@ -53,7 +55,9 @@ async def run_scieval(model: str) -> None:
                 all_requests=questions, system_prompt=prompt_fn(), model=model
             )
         elif model in BENCHMARK_CFG["ollama_models"]:
-            evaluation_df = await ollama.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=32)
+            evaluation_df = await ollama.run_completion(
+                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=32
+            )
         elif model in BENCHMARK_CFG["vllm_models"]:
             evaluation_df = vllm.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
 

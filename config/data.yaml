@@ -3,3 +3,38 @@ openstax:
   raw_data_path: data/raw/openstax
 
   extracted_xml_dir: data/extracted/openstax
+  processed_txt_dir: data/processed/openstax
+
+  parse_cfg:
+    parse_topics:
+      - Motion Along a Straight Line
+      - Motion in Two and Three Dimensions
+
+    ignore_content_tags:
+      - collection
+      - subcollection
+      - content
+      - content-id
+      - document
+      - module
+      - metadata
+      - uuid
+      - figure
+      - media
+      - image
+      - caption
+      - iframe
+
+    no_newline_tags:
+      - sup
+      - sub
+      - link
+      - label
+      - term
+      - meaning
+      - emphasis
+      - colspec
+      - entry
+      - newline
+      - math
+      - equation

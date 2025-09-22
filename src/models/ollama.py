@@ -1,6 +1,8 @@
 import asyncio
+
 import polars as pl
 from ollama import AsyncClient
+
 
 async def ollama_completion_request(
     client: AsyncClient,
@@ -20,6 +22,7 @@ async def ollama_completion_request(
     )
     return resp["message"]["content"]
 
+
 async def run_completion(
     all_requests: list[str],
     system_prompt: str | list = "",
@@ -36,10 +39,7 @@ async def run_completion(
     for i in range(0, len(all_requests), batch_size):
         reqs_batch = all_requests[i : i + batch_size]
         prompts_batch = sys_prompts[i : i + batch_size]
-        tasks = [
-            ollama_completion_request(client, req, sp, model=model)
-            for req, sp in zip(reqs_batch, prompts_batch)
-        ]
+        tasks = [ollama_completion_request(client, req, sp, model=model) for req, sp in zip(reqs_batch, prompts_batch)]
         answers = await asyncio.gather(*tasks)  # preserves order
         results.extend(answers)
 
