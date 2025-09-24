@@ -37,7 +37,7 @@ async def run_mmlu(model: str, subset: str) -> None:
         file=os.path.join(
             BENCHMARK_CFG["outputs_dir"],
             "MMLU_evaluation",
-            f"{subset}/{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet",
+            f"{subset}/{model.replace("/", "-")}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet",
         )
     )
 
@@ -69,7 +69,7 @@ async def run_scieval(model: str) -> None:
         file=os.path.join(
             BENCHMARK_CFG["outputs_dir"],
             "SciEval_evaluation",
-            f"{model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet",
+            f"{model.replace("/", "-")}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet",
         )
     )
 
