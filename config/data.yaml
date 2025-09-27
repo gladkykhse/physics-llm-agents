@@ -10,25 +10,21 @@ openstax:
       - Motion Along a Straight Line
       - Motion in Two and Three Dimensions
 
-    ignore_content_tags:
-      - collection
-      - subcollection
-      - content
-      - content-id
-      - document
-      - module
+    skip_tags:
       - metadata
-      - uuid
-      - figure
-      - media
-      - image
+
+    ignore_content_tags:
       - caption
+      - figure
       - iframe
+      - image
+      - label
+      - module
+      - link
 
     no_newline_tags:
       - sup
       - sub
-      - link
       - label
       - term
       - meaning
