@@ -12,6 +12,7 @@ openstax:
 
     skip_tags:
       - metadata
+      - exercise
 
     ignore_content_tags:
       - caption

@@ -91,6 +91,14 @@ def _render_inline(el: etree._Element, parse_cfg: dict[str, object]) -> str:
     return " ".join(buf.getvalue().split())  # collapse whitespace
 
 
+def _next_element(node: etree._Element) -> etree._Element | None:
+    """Return the next element sibling (skip comments/PIs)."""
+    sib = node.getnext()
+    while sib is not None and not isinstance(sib.tag, str):
+        sib = sib.getnext()
+    return sib
+
+
 def _default_handler(el: etree._Element, out: _io.TextIOWrapper, newline: bool = False) -> None:
     if el.text and el.text.strip():
         out.write(el.text.strip() + ("\n" if newline else " "))
@@ -296,6 +304,14 @@ def _walk_subtree(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[st
     if tag in parse_cfg.get("skip_tags", set()):
         _default_tail_handler(el, out, newline=False)
         return
+
+    if tag == "title":
+        skip_tags = set(parse_cfg.get("skip_tags", set()))
+        sib = _next_element(el)
+        if sib is not None and _localname(sib.tag) in skip_tags:
+            # Don’t render the title; still preserve tail spacing if any
+            _default_tail_handler(el, out, newline=False)
+            return
 
     if tag not in parse_cfg["ignore_content_tags"]:
         match tag:

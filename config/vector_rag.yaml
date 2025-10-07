@@ -1,0 +1,11 @@
+embedding_model: sentence-transformers/all-mpnet-base-v2
+
+table: rag_chunks
+
+index: rag_chunks_embedding_idx
+index_lists: 100
+
+rag_text_files:
+  - data/processed/openstax/university-physics-volume-1.collection.txt
+
+chunk_size: 500

@@ -11,3 +11,8 @@ def load_yaml(file: str) -> dict:
 def save_json(obj: dict[str, object], filename: str) -> None:
     with open(filename, "w") as f:
         json.dump(obj, f)
+
+
+def read_file(file: str) -> str:
+    with open(file, "r", encoding="utf-8") as f:
+        return f.read()
