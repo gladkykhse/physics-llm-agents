@@ -1,8 +1,10 @@
 import os
-from src.utils.helpers import load_yaml, read_file
-from sentence_transformers import SentenceTransformer
-from src.knowledge_bases.vector_rag import prepare_vector_rag, chunk_text, embed_chunks, insert_chunks
+
 from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
+
+from src.knowledge_bases.vector_rag import chunk_text, embed_chunks, insert_chunks, prepare_vector_rag
+from src.utils.helpers import load_yaml, read_file
 
 load_dotenv()
 
@@ -13,8 +15,10 @@ if __name__ == "__main__":
     model = SentenceTransformer(cfg["embedding_model"])
     tokenizer = model.tokenizer
 
-    dsn = f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@" \
-          f"{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
+    dsn = (
+        f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@"
+        f"{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
+    )
 
     prepare_vector_rag(
         dsn=dsn,
@@ -29,7 +33,8 @@ if __name__ == "__main__":
     chunks = chunk_text(
         tokenizer=tokenizer,
         text=text,
-        chunk_size=cfg["chunk_size"],
+        max_chunk_tokens=cfg["max_chunk_tokens"],
+        max_merge_tokens=cfg["max_merge_tokens"],
     )
 
     embeddings = embed_chunks(
@@ -44,8 +49,3 @@ if __name__ == "__main__":
         truncate_table=True,
         table=cfg["table"],
     )
-
-
-
-
-

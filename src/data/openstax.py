@@ -183,37 +183,38 @@ def _list_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[st
 
 
 def _title_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[str, object]) -> None:
-    parent_local = _localname(el.getparent().tag) if el.getparent() is not None else None
-    sec_depth = _ancestor_count(el, "section")
-    sc_depth  = _ancestor_count(el, "subcollection")  # Unit=1, Chapter=2 (in your books)
+    def _clamp(n: int) -> int:
+        return 1 if n < 1 else 6 if n > 6 else n
 
-    text = _render_inline(el, parse_cfg)
+    parent = el.getparent()
+    if parent is None:
+        return
+
+    parent_local = _localname(parent.tag)
+    S = _ancestor_count(el, "subcollection")
+    D = _ancestor_count(el, "document")
+    T = _ancestor_count(el, "section")
+
+    # Compute pure hierarchical level
+    if parent_local == "subcollection":
+        level = S
+    elif parent_local == "document":
+        level = S + 1
+    elif parent_local == "section":
+        level = S + 1 + T
+    else:
+        # Fallback: use a conservative pure-hierarchy estimate
+        # (rare tags; keep monotonicity with structure)
+        level = S + (1 if D > 0 else 0) + T
+
+    level = _clamp(level)
+
+    text = _render_inline(el, parse_cfg).strip()
     if not text:
         return
 
-    # decide LaTeX-y command based on real hierarchy
-    if parent_local == "subcollection":
-        # md:title inside a subcollection
-        if sc_depth == 1:                 # Unit
-            cmd = r"\part*"
-            text = f"Unit: {text}"
-        elif sc_depth == 2:               # Chapter
-            cmd = r"\chapter*"
-        else:
-            cmd = r"\section*"            # deeper subcollections (unlikely)
-    elif parent_local == "document":
-        # Module title; if no chapter context (e.g., Preface at top), promote to chapter
-        cmd = r"\section*" if sc_depth >= 1 else r"\chapter*"
-    elif parent_local == "section":
-        # Section headings inside a module, by depth
-        if   sec_depth == 1: cmd = r"\subsection*"
-        elif sec_depth == 2: cmd = r"\subsubsection*"
-        else:                cmd = r"\paragraph*"
-    else:
-        # Fallback (rare)
-        cmd = r"\section*"
-
-    out.write(f"\n\n{cmd}{{{text}}}\n\n")
+    hashes = "#" * level
+    out.write(f"\n\n{hashes} {text}\n\n")
 
 
 def _footnote_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[str, object]) -> None:
@@ -306,7 +307,7 @@ def _walk_subtree(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[st
         return
 
     if tag == "title":
-        skip_tags = set(parse_cfg.get("skip_tags", set()))
+        skip_tags = set(parse_cfg.get("ignore_title", set()))
         sib = _next_element(el)
         if sib is not None and _localname(sib.tag) in skip_tags:
             # Don’t render the title; still preserve tail spacing if any

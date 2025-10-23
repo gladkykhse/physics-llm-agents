@@ -1,34 +1,189 @@
-from sentence_transformers import SentenceTransformer
-from transformers import PreTrainedTokenizer
+import re
+from typing import List
+
+import nltk
 import numpy as np
 import psycopg
-from psycopg import sql
 from pgvector.psycopg import register_vector
+from psycopg import sql
+from sentence_transformers import SentenceTransformer
+from transformers import PreTrainedTokenizer
+
 from src.utils.helpers import read_file
 
+nltk.download("punkt", quiet=True)
+nltk.download("punkt_tab", quiet=True)
+from nltk.tokenize import sent_tokenize
 
-def chunk_text(tokenizer: PreTrainedTokenizer, text: str, chunk_size: int, drop_last: bool = False) -> list[str]:
-    enc = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True, truncation=False)
-    offsets = enc["offset_mapping"]
 
-    chunks = []
-    n = len(offsets)
-    for i in range(0, n, chunk_size):
-        if drop_last and i + chunk_size > n:
-            break
-        start_char = offsets[i][0]
-        end_char = offsets[min(i + chunk_size, n) - 1][1]
-        chunks.append(text[start_char:end_char])
+def tok_len(tokenizer: PreTrainedTokenizer, text: str) -> int:
+    return len(tokenizer(text, add_special_tokens=False, truncation=False)["input_ids"])
+
+
+def split_by_heading_level(text: str, level: int) -> List[str]:
+    pattern = re.compile(rf"(?m)^({'#' * level})\s+.*$")
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return [text] if text != "" else []
+
+    parts: List[str] = []
+
+    if matches[0].start() > 0:
+        preface = text[: matches[0].start()]
+        if preface != "":
+            parts.append(preface)
+
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        chunk = text[start:end]
+        if chunk != "":
+            parts.append(chunk)
+
+    return parts
+
+
+def _pack_by_newlines(text: str, tokenizer: PreTrainedTokenizer, max_token_len: int) -> List[str]:
+    tokens = re.findall(r"[^\n]+|\n+", text)
+
+    chunks: List[str] = []
+    buf = ""
+
+    def flush():
+        nonlocal buf
+        if buf != "":
+            chunks.append(buf)
+            buf = ""
+
+    for tk in tokens:
+        if tok_len(tokenizer, buf + tk) <= max_token_len:
+            buf += tk
+            continue
+
+        flush()
+
+        if tok_len(tokenizer, tk) <= max_token_len:
+            buf = tk
+            continue
+
+        if tk.startswith("\n"):
+            nl_run = tk
+            while nl_run:
+                piece = nl_run[:1]
+                if tok_len(tokenizer, piece) <= max_token_len:
+                    chunks.append(piece)
+                    nl_run = nl_run[1:]
+                else:
+                    chunks.append("")
+                    nl_run = nl_run[1:]
+            buf = ""
+        else:
+            pieces = re.findall(r"\S+|\s+", tk)
+            seg = ""
+            for p in pieces:
+                if tok_len(tokenizer, seg + p) <= max_token_len:
+                    seg += p
+                else:
+                    if seg != "":
+                        chunks.append(seg)
+                    if tok_len(tokenizer, p) <= max_token_len:
+                        seg = p
+                    else:
+                        tmp = ""
+                        for ch in p:
+                            if tok_len(tokenizer, tmp + ch) <= max_token_len:
+                                tmp += ch
+                            else:
+                                if tmp != "":
+                                    chunks.append(tmp)
+                                tmp = ch
+                        seg = tmp
+            if seg != "":
+                buf = seg
+            else:
+                buf = ""
+
+    flush()
+    return [c for c in chunks if c != ""]
+
+
+def _pack_sentences_with_newline_fallback(text: str, tokenizer: PreTrainedTokenizer, max_token_len: int) -> List[str]:
+    sentences = [s for s in sent_tokenize(text) if s.strip()]
+    chunks: List[str] = []
+    current = ""
+
+    for s in sentences:
+        s_ok = tok_len(tokenizer, s) <= max_token_len
+
+        if current == "":
+            if s_ok:
+                current = s
+            else:
+                chunks.extend(_pack_by_newlines(s, tokenizer, max_token_len))
+        else:
+            candidate = current + s
+            if s_ok and tok_len(tokenizer, candidate) <= max_token_len:
+                current = candidate
+            else:
+                chunks.append(current)
+                if s_ok:
+                    current = s
+                else:
+                    chunks.extend(_pack_by_newlines(s, tokenizer, max_token_len))
+                    current = ""
+
+    if current:
+        chunks.append(current)
     return chunks
 
 
-def embed_chunks(model: SentenceTransformer, chunks: list[str]) -> np.ndarray:
-    return model.encode(sentences=chunks,
-                        batch_size=32,
-                        show_progress_bar=True,
-                        convert_to_numpy=True,
-                        normalize_embeddings=True)
+def recurse(text: str, tokenizer: PreTrainedTokenizer, level: int, max_token_len: int) -> List[str]:
+    if text == "":
+        return []
 
+    if tok_len(tokenizer, text) <= max_token_len:
+        return [text]
+
+    if level <= 6:
+        chunks: List[str] = []
+        for section in split_by_heading_level(text=text, level=level):
+            if tok_len(tokenizer, section) > max_token_len:
+                chunks.extend(recurse(section, tokenizer, level=level + 1, max_token_len=max_token_len))
+            else:
+                chunks.append(section)
+        return chunks
+
+    return _pack_by_newlines(text, tokenizer, max_token_len)
+
+
+def merge_small_chunks(chunks: List[str], tokenizer: PreTrainedTokenizer, max_token_len: int) -> List[str]:
+    if not chunks:
+        return []
+
+    merged: List[str] = []
+    current = chunks[0]
+
+    for nxt in chunks[1:]:
+        candidate = current + nxt  # exact boundary (no added whitespace)
+        if tok_len(tokenizer, candidate) <= max_token_len:
+            current = candidate
+        else:
+            merged.append(current)
+            current = nxt
+
+    merged.append(current)
+    return merged
+
+
+def chunk_text(text: str, tokenizer: PreTrainedTokenizer, max_chunk_tokens: int, max_merge_tokens: int) -> List[str]:
+    chunks = recurse(text, tokenizer, level=1, max_token_len=max_chunk_tokens)
+    return merge_small_chunks(chunks, tokenizer, max_token_len=max_merge_tokens)
+
+
+def embed_chunks(model: SentenceTransformer, chunks: list[str]) -> np.ndarray:
+    return model.encode(
+        sentences=chunks, batch_size=32, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=True
+    )
 
 
 def _render(template: str, *args) -> sql.Composed:

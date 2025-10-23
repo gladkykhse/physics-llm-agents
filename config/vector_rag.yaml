@@ -8,4 +8,5 @@ index_lists: 100
 rag_text_files:
   - data/processed/openstax/university-physics-volume-1.collection.txt
 
-chunk_size: 500
+max_chunk_tokens: 256
+max_merge_tokens: 320
