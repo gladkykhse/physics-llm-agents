@@ -18,10 +18,4 @@ ollama_models:
   - mightykatun/qwen2.5-math:7b
 
 vllm_models:
-  - meta-llama/Meta-Llama-3-8B-Instruct
-  - mistralai/Mistral-7B-Instruct-v0.3
-  - openai/gpt-oss-20b
-  - Qwen/Qwen3-8B
-  - deepseek-ai/DeepSeek-R1-Distill-Llama-8B
-  - microsoft/Phi-4-mini-reasoning
-  - microsoft/Phi-4-reasoning
+  - meta-llama/Llama-3.1-8B-Instruct

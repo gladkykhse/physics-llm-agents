@@ -58,12 +58,31 @@ def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
     )
 
     df = df.with_columns(
-        correct_std=pl.col("answer").list.contains(pl.col("std_ans")),
-        correct_cot=pl.col("answer").list.contains(pl.col("cot_ans")),
+        answered_std=pl.col("std_ans").is_not_null(),
+        answered_cot=pl.col("cot_ans").is_not_null(),
     )
 
-    overall_standard = float(df["correct_std"].mean())
-    overall_cot = float(df["correct_cot"].mean())
+    df = df.with_columns(
+        correct_std=pl.when(pl.col("answered_std") & pl.col("answer").is_not_null())
+        .then(pl.col("answer").list.contains(pl.col("std_ans")).fill_null(False))
+        .otherwise(False),
+        correct_cot=pl.when(pl.col("answered_cot") & pl.col("answer").is_not_null())
+        .then(pl.col("answer").list.contains(pl.col("cot_ans")).fill_null(False))
+        .otherwise(False),
+    ).with_columns(
+        incorrect_std=pl.col("answered_std") & (~pl.col("correct_std")),
+        incorrect_cot=pl.col("answered_cot") & (~pl.col("correct_cot")),
+        not_answered_std=~pl.col("answered_std"),
+        not_answered_cot=~pl.col("answered_cot"),
+    )
+
+    pct_correct_std = float(df["correct_std"].mean())
+    pct_incorrect_std = float(df["incorrect_std"].mean())
+    pct_not_answered_std = float(df["not_answered_std"].mean())
+
+    pct_correct_cot = float(df["correct_cot"].mean())
+    pct_incorrect_cot = float(df["incorrect_cot"].mean())
+    pct_not_answered_cot = float(df["not_answered_cot"].mean())
 
     ability_accuracy = (
         df.group_by("ability")
@@ -90,12 +109,16 @@ def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
 
     results_json = {
         "standard": {
-            "overall": round(overall_standard, 4),
+            "correct": round(pct_correct_std, 4),
+            "incorrect": round(pct_incorrect_std, 4),
+            "not_answered": round(pct_not_answered_std, 4),
             "abilities": abilities_standard,
             "topics": topics_standard,
         },
         "cot": {
-            "overall": round(overall_cot, 4),
+            "correct": round(pct_correct_cot, 4),
+            "incorrect": round(pct_incorrect_cot, 4),
+            "not_answered": round(pct_not_answered_cot, 4),
             "abilities": abilities_cot,
             "topics": topics_cot,
         },
@@ -105,13 +128,19 @@ def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
 
 
 def plot_results(results_json: dict[str, object], filename: str) -> None:
-    overall_standard = results_json["standard"]["overall"]
-    overall_cot = results_json["cot"]["overall"]
+    # Pull overall breakdown (stacked)
+    std = results_json["standard"]
+    cot = results_json["cot"]
+    correct = [std["correct"], cot["correct"]]
+    not_answered = [std["not_answered"], cot["not_answered"]]
+    incorrect = [std["incorrect"], cot["incorrect"]]
 
     abilities = sorted(
         set(results_json["standard"]["abilities"].keys()) | set(results_json["cot"]["abilities"].keys())
     )
-    topics = sorted(set(results_json["standard"]["topics"].keys()) | set(results_json["cot"]["topics"].keys()))
+    topics = sorted(
+        set(results_json["standard"]["topics"].keys()) | set(results_json["cot"]["topics"].keys())
+    )
 
     abilities_std = [results_json["standard"]["abilities"].get(a, np.nan) for a in abilities]
     abilities_cot = [results_json["cot"]["abilities"].get(a, np.nan) for a in abilities]
@@ -123,9 +152,16 @@ def plot_results(results_json: dict[str, object], filename: str) -> None:
     gs = fig.add_gridspec(2, 2, height_ratios=[1, 2])
 
     ax1 = fig.add_subplot(gs[0, 0])
-    ax1.bar(["Standard", "CoT"], [overall_standard, overall_cot], color=["tab:blue", "tab:orange"])
-    ax1.set_title("Overall Accuracy")
-    ax1.set_ylabel("Accuracy")
+    labels = ["Standard", "CoT"]
+    ax1.bar(labels, correct, color="green", label="Correct")
+    ax1.bar(labels, not_answered, bottom=correct, color="gold", label="Not Answered")
+    ax1.bar(labels, incorrect,
+            bottom=[c + n for c, n in zip(correct, not_answered)],
+            color="red", label="Incorrect")
+    ax1.set_title("Overall Breakdown")
+    ax1.set_ylabel("Percentage")
+    ax1.set_ylim(0, 1)
+    ax1.legend()
 
     ax2 = fig.add_subplot(gs[0, 1])
     x = np.arange(len(abilities))
@@ -150,3 +186,4 @@ def plot_results(results_json: dict[str, object], filename: str) -> None:
 
     plt.tight_layout()
     plt.savefig(filename)
+    plt.close()

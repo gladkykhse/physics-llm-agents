@@ -77,25 +77,43 @@ def preprocess_questions(df: pl.DataFrame) -> pl.DataFrame:
 
 def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
     df = df.with_columns(
-        pl.col("answer_standard_system_prompt").str.extract(r"([ABCD])").alias("std_ans"),
-        pl.col("answer_cot_system_prompt").str.extract(r"(?i)answer.*?([ABCD])").str.to_uppercase().alias("cot_ans"),
-        pl.col("answer").map_elements(lambda x: [NUM_TO_LETTER[x]], return_dtype=pl.List(pl.String)),
+        std_ans=pl.col("answer_standard_system_prompt").str.extract(r"([ABCD])"),
+        cot_ans=pl.col("answer_cot_system_prompt").str.extract(r"(?i)answer.*?([ABCD])").str.to_uppercase(),
+        answer_list=pl.when(pl.col("answer").is_not_null())
+        .then(pl.col("answer").map_elements(lambda x: [NUM_TO_LETTER[x]], return_dtype=pl.List(pl.String)))
+        .otherwise(None),
     )
 
     df = df.with_columns(
-        correct_std=pl.col("answer").list.contains(pl.col("std_ans")),
-        correct_cot=pl.col("answer").list.contains(pl.col("cot_ans")),
+        answered_std=pl.col("std_ans").is_not_null(),
+        answered_cot=pl.col("cot_ans").is_not_null(),
     )
 
-    overall_standard = float(df["correct_std"].mean())
-    overall_cot = float(df["correct_cot"].mean())
+    df = df.with_columns(
+        correct_std=pl.when(pl.col("answered_std") & pl.col("answer_list").is_not_null())
+        .then(pl.col("answer_list").list.contains(pl.col("std_ans")).fill_null(False))
+        .otherwise(False),
+        correct_cot=pl.when(pl.col("answered_cot") & pl.col("answer_list").is_not_null())
+        .then(pl.col("answer_list").list.contains(pl.col("cot_ans")).fill_null(False))
+        .otherwise(False),
+    ).with_columns(
+        # Incorrect = answered but wrong; Not answered = no parsed letter
+        incorrect_std=pl.col("answered_std") & (~pl.col("correct_std")),
+        incorrect_cot=pl.col("answered_cot") & (~pl.col("correct_cot")),
+        not_answered_std=~pl.col("answered_std"),
+        not_answered_cot=~pl.col("answered_cot"),
+    )
 
     results_json = {
         "standard": {
-            "overall": round(overall_standard, 4),
+            "correct": round(float(df["correct_std"].mean()), 4),
+            "incorrect": round(float(df["incorrect_std"].mean()), 4),
+            "not_answered": round(float(df["not_answered_std"].mean()), 4),
         },
         "cot": {
-            "overall": round(overall_cot, 4),
+            "correct": round(float(df["correct_cot"].mean()), 4),
+            "incorrect": round(float(df["incorrect_cot"].mean()), 4),
+            "not_answered": round(float(df["not_answered_cot"].mean()), 4),
         },
     }
 
@@ -103,11 +121,25 @@ def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
 
 
 def plot_results(results_json: dict[str, object], filename: str) -> None:
-    overall_standard = results_json["standard"]["overall"]
-    overall_cot = results_json["cot"]["overall"]
+    # Extract values
+    standard = results_json["standard"]
+    cot = results_json["cot"]
 
-    plt.bar(["Standard", "CoT"], [overall_standard, overall_cot], color=["tab:blue", "tab:orange"])
-    plt.title("Overall Accuracy")
-    plt.ylabel("Accuracy")
+    labels = ["Standard", "CoT"]
+    correct = [standard["correct"], cot["correct"]]
+    not_answered = [standard["not_answered"], cot["not_answered"]]
+    incorrect = [standard["incorrect"], cot["incorrect"]]
+
+    # Plot stacked bars
+    plt.figure(figsize=(6, 4))
+    plt.bar(labels, correct, color="green", label="Correct")
+    plt.bar(labels, not_answered, bottom=correct, color="gold", label="Not Answered")
+    plt.bar(labels, incorrect, bottom=[c + n for c, n in zip(correct, not_answered)], color="red", label="Incorrect")
+
+    plt.title("Performance Breakdown")
+    plt.ylabel("Percentage")
+    plt.ylim(0, 1)
+    plt.legend()
     plt.tight_layout()
     plt.savefig(filename)
+    plt.close()

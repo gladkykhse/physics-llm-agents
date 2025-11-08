@@ -1,9 +1,10 @@
-import _io
-from io import StringIO
 import os
-from lxml import etree
-from git import Repo
 from copy import deepcopy
+from io import StringIO
+
+import _io
+from git import Repo
+from lxml import etree
 from mathml_to_latex.converter import MathMLToLaTeX
 
 _M2L = MathMLToLaTeX()

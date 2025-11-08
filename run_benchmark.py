@@ -24,10 +24,12 @@ async def run_mmlu(model: str, subset: str) -> None:
             )
         elif model in BENCHMARK_CFG["ollama_models"]:
             evaluation_df = await ollama.run_completion(
-                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=32
+                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=4
             )
         elif model in BENCHMARK_CFG["vllm_models"]:
-            evaluation_df = vllm.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
+            evaluation_df = await vllm.run_completion(
+                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=4
+            )
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_mmlu = df_mmlu.join(evaluation_df, on="question")
@@ -56,10 +58,12 @@ async def run_scieval(model: str) -> None:
             )
         elif model in BENCHMARK_CFG["ollama_models"]:
             evaluation_df = await ollama.run_completion(
-                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=32
+                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=4
             )
         elif model in BENCHMARK_CFG["vllm_models"]:
-            evaluation_df = vllm.run_completion(all_requests=questions, system_prompt=prompt_fn(), model=model)
+            evaluation_df = await vllm.run_completion(
+                all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=4
+            )
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_scieval = df_scieval.join(evaluation_df, on="question")

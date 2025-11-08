@@ -244,3 +244,37 @@ def insert_chunks(
             cur.executemany(insert_stmt, rows)
 
         con.commit()
+
+
+class PgVectorRetriever:
+    def __init__(
+        self,
+        dsn: str,
+        table: str = "rag_chunks",
+        model: str = "sentence-transformers/all-mpnet-base-v2",
+        top_k: int = 3,
+    ):
+        self.dsn = dsn
+        self.table = table
+        self.model = SentenceTransformer(model)
+        self.top_k = top_k
+
+    def __call__(self, query: str):
+        qvec = self.model.encode(query, normalize_embeddings=True)
+        with psycopg.connect(self.dsn) as con:
+            register_vector(con)
+            with con.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT source, chunk_id, text, (1 - (embedding <=> %s)) AS score
+                    FROM {self.table}
+                    ORDER BY embedding <=> %s
+                    LIMIT %s
+                    """,
+                    (qvec, qvec, self.top_k),
+                )
+                rows = cur.fetchall()
+
+        results = [{"source": s, "chunk_id": cid, "text": t, "score": float(sc)} for (s, cid, t, sc) in rows]
+
+        return results
