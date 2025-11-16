@@ -175,9 +175,42 @@ def merge_small_chunks(chunks: List[str], tokenizer: PreTrainedTokenizer, max_to
     return merged
 
 
-def chunk_text(text: str, tokenizer: PreTrainedTokenizer, max_chunk_tokens: int, max_merge_tokens: int) -> List[str]:
+def chunk_text_recursive(
+    text: str, tokenizer: PreTrainedTokenizer, max_chunk_tokens: int, max_merge_tokens: int
+) -> List[str]:
     chunks = recurse(text, tokenizer, level=1, max_token_len=max_chunk_tokens)
     return merge_small_chunks(chunks, tokenizer, max_token_len=max_merge_tokens)
+
+
+def chunk_text_tokens(
+    text: str,
+    tokenizer: PreTrainedTokenizer,
+    max_chunk_tokens: int,
+    tokens_overlap: int,
+) -> List[str]:
+    encoded = tokenizer(text, add_special_tokens=False, truncation=False)
+    input_ids = encoded["input_ids"]
+
+    chunks: List[str] = []
+    stride = max_chunk_tokens - tokens_overlap
+    start = 0
+
+    while start < len(input_ids):
+        end = start + max_chunk_tokens
+        chunk_ids = input_ids[start:end]
+        if not chunk_ids:
+            break
+
+        chunk_text = tokenizer.decode(chunk_ids, skip_special_tokens=True)
+        if chunk_text:
+            chunks.append(chunk_text)
+
+        if end >= len(input_ids):
+            break
+
+        start += stride
+
+    return chunks
 
 
 def embed_chunks(model: SentenceTransformer, chunks: list[str]) -> np.ndarray:
@@ -252,14 +285,18 @@ class PgVectorRetriever:
         dsn: str,
         table: str = "rag_chunks",
         model: str = "sentence-transformers/all-mpnet-base-v2",
-        top_k: int = 3,
+        memory: bool = True,
     ):
         self.dsn = dsn
         self.table = table
         self.model = SentenceTransformer(model)
-        self.top_k = top_k
+        self.memory = memory
+        self.retrieved_chunk_ids = set()
 
-    def __call__(self, query: str):
+    def clear_memory(self):
+        self.retrieved_chunk_ids = set()
+
+    def __call__(self, query: str, top_k: int = 3) -> list[dict[str, object]]:
         qvec = self.model.encode(query, normalize_embeddings=True)
         with psycopg.connect(self.dsn) as con:
             register_vector(con)
@@ -271,10 +308,14 @@ class PgVectorRetriever:
                     ORDER BY embedding <=> %s
                     LIMIT %s
                     """,
-                    (qvec, qvec, self.top_k),
+                    (qvec, qvec, top_k),
                 )
                 rows = cur.fetchall()
 
-        results = [{"source": s, "chunk_id": cid, "text": t, "score": float(sc)} for (s, cid, t, sc) in rows]
+        rows_parsed = [{"source": s, "chunk_id": cid, "text": t, "score": float(sc)} for (s, cid, t, sc) in rows]
 
-        return results
+        if self.memory:
+            rows_parsed = [r for r in rows_parsed if r["chunk_id"] not in self.retrieved_chunk_ids]
+            self.retrieved_chunk_ids.update({record["chunk_id"] for record in rows_parsed})
+
+        return rows_parsed

@@ -17,65 +17,59 @@ retriever_backend = PgVectorRetriever(
     dsn=dsn,
     table=vector_rag_cfg["table"],
     model=vector_rag_cfg["embedding_model"],
-    top_k=vector_rag_cfg["retrieve_top_k"],
+    memory=True,
 )
 
 
 @tool
 def retriever(query: str) -> str:
     """
-    This tool allows searching for authoritative physics textbook knowledge including
-    - Fundamental concepts and definitions
-    - Mathematical formulas and equations with explanations
-    - Physical laws, theorems, and principles with applications
-    - Constants, units, and measurement systems
-    - Theoretical foundations and derivations
+    Retrieve short theory excerpts from a physics textbook using semantic similarity search.
 
-    CRITICAL CONSTRAINTS:
-    - ONLY use for physics-related queries - this tool cannot answer questions about other subjects
-    - Be specific and precise in your queries to get the most relevant results
+    Physics textbook content includes definitions, laws, general equations, conceptual explanations, etc.
+    The source textbook contains only theoretical knowledge. It does not include worked examples, numeric solutions, or problem-specific procedures.
 
-    The tool returns the most relevant textbook passages with similarity scores.
-    Use this when you need authoritative physics information to solve problems.
+    The query for this tool should specify the theoretical information you need for conceptual grounding—something you do not remember well or want to verify.
+    Queries should relate to theoretical topics, not specific problems or scenarios.
 
-    Args:
-        query: A specific, physics-related search query using appropriate terminology
+    Examples of valid concept queries include:
+    "Newton's second law", "Mass–energy equivalence", "Simple harmonic motion", "Electric potential gradient", "Angular momentum conservation".
 
-    Returns:
-        str: Formatted results containing relevant textbook passages with sources and similarity scores
+    Problem-specific queries, especially those containing numbers or detailed scenarios, will produce low-quality and low-similarity results.
+
+    If the retrieved results are low-quality or unhelpful, you may reformulate the query and try again.
+    However, if several attempts still fail, assume the textbook does not contain the information and continue using your own knowledge to solve the subproblem.
     """
-    results = retriever_backend(query=query)
+    top_k = int(vector_rag_cfg["retrieve_top_k"])
+    results = retriever_backend(query=query, top_k=top_k)
 
-    response = f"Found {len(results)} results for '{query}':\n\n"
+    if len(results) == 0:
+        return (
+            f"No new chunks were returned for the query `{query}`.\n\n"
+            "Most likely, the top matches for this phrasing were already retrieved earlier and are present in the current "
+            "context, or the retriever could not find sufficiently relevant theory for this exact wording.\n\n"
+            "What you can do next:\n"
+            "- Reformulate the query more generally and with canonical terms (e.g., the law/theorem name).\n"
+            "- Proceed using the theory already present in your context if it’s sufficient for grounding.\n"
+        )
+    if len(results) < vector_rag_cfg["retrieve_top_k"]:
+        missing = top_k - len(results)
+        response = (
+            f"Only {len(results)} of the requested top-{top_k} most similar chunks are NEW for the query `{query}`.\n"
+            f"The remaining {missing} highly similar chunk(s) were likely retrieved earlier and already exist in your "
+            "conversation context.\n\n"
+            "If you still need additional conceptual grounding, try reformulating the query more generally (prefer canonical "
+            "terminology) and call this tool again; otherwise proceed with the context you already extracted.\n\n"
+            "New chunks:\n\n"
+        )
+    else:
+        response = (
+            f"Extracted {vector_rag_cfg['retrieve_top_k']} new chunks "
+            f"for the provided query: `{query}` \nNew chunks:\n\n"
+        )
+
     for i, r in enumerate(results, 1):
         response += f"{i}. Source: {r['source']} (score: {r['score']:.3f})\n"
         response += f"   Content: {r['text']}\n\n"
 
     return response
-
-
-@tool
-def finalize_solution() -> str:
-    """
-    This tool indicates that you have completed all reasoning steps and are ready to provide the final solution.
-
-    Call this tool ONLY when:
-    - You have executed all necessary steps from your plan
-    - You have retrieved all required physics information using available tools
-    - You have performed all calculations and reasoning
-    - You are confident in your solution and ready to present the final answer
-
-    DO NOT call this tool if:
-    - You are still working through steps in your execution plan
-    - You need to retrieve additional information or perform more calculations
-    - You are uncertain about any part of the solution
-    - You have not verified your answer matches the problem requirements
-
-    This tool should be the final step in your problem-solving process, indicating
-    that no further reasoning or tool usage is required, and you are prepared to
-    synthesize everything into a complete, final answer.
-
-    Returns:
-        str: Confirmation that the system will proceed to final answer generation
-    """
-    return "Ready for final answer generation"

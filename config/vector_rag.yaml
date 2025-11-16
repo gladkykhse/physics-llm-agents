@@ -10,5 +10,6 @@ rag_text_files:
 
 max_chunk_tokens: 256
 max_merge_tokens: 320
+tokens_overlap: 64
 
 retrieve_top_k: 3
