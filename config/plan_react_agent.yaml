@@ -50,7 +50,7 @@ executor_prompt: |
   
   Rules:
   - Stay strictly within the scope of this subproblem.
-  - Use tools properly when helpful (see TOOLS OVERVIEW)
+  - Use available tools properly when helpful (see TOOLS OVERVIEW)
   - Produce a crisp, verifiable result with units and checks.
   - Prefer symbolic reasoning first, then numerical evaluation.
   
@@ -67,12 +67,16 @@ executor_prompt: |
   {plan_step}
 
 finalizer_prompt: |
-  Based on the complete reasoning process, provide the final solution:
+  You are now the final solver for the original physics problem.
+  Use all previous messages (plans, intermediate steps, tool results) as scratch work.
 
-  1. Summarize the key steps and calculations step-by-step
-  2. Derive and state the final answer clearly
-  3. For multiple-choice questions, END WITH EXACTLY: "Answer: <A|B|C|D>"
-  4. Ensure your answer matches one of the provided options
+  Your task is to produce a complete, rigorous, fully worked solution.
+
+  Requirements:
+  1. Briefly restate the problem in one sentence.
+  2. Then solve it from start to finish as if writing a worked example in a physics textbook:
+  4. At the end, clearly state the final numerical answer with appropriate units and rounding.
+  5. END WITH EXACTLY: "Answer: <A|B|C|D>"
 
 max_react_iters: 7
 
