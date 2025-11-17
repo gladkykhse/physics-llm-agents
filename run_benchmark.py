@@ -3,8 +3,10 @@ import asyncio
 import os
 from datetime import datetime
 
+import polars as pl
+
 from src.benchmarks import mmlu, scieval
-from src.models import ollama, openai_api, vllm
+from src.models import langgraph, ollama, openai_api, vllm
 from src.utils.helpers import load_yaml
 
 BENCHMARK_CFG = load_yaml("config/benchmark.yaml")
@@ -44,10 +46,13 @@ async def run_mmlu(model: str, subset: str) -> None:
     )
 
 
-async def run_scieval(model: str) -> None:
+async def run_scieval(model: str, topics: list[str]) -> None:
     dataset_path = scieval.get_dataset(save_dir="benchmarks")
     file_path = os.path.join(dataset_path, "test", "data-00000-of-00001.arrow")
     df_scieval = scieval.load_dataframe(source=file_path)
+
+    if topics:
+        df_scieval = df_scieval.filter(pl.col("topic").is_in(topics))
 
     for prompt_fn in (scieval.standard_system_prompt, scieval.cot_system_prompt):
         questions = df_scieval["question"].to_list()
@@ -64,6 +69,8 @@ async def run_scieval(model: str) -> None:
             evaluation_df = await vllm.run_completion(
                 all_requests=questions, system_prompt=prompt_fn(), model=model, batch_size=4
             )
+        elif model in BENCHMARK_CFG["agents"]:
+            evaluation_df = langgraph.run_solving(all_requests=questions, agent=model)
 
         evaluation_df = evaluation_df.rename({"answer": f"answer_{prompt_fn.__name__}"})
         df_scieval = df_scieval.join(evaluation_df, on="question")
@@ -88,7 +95,10 @@ if __name__ == "__main__":
         "--model",
         type=str,
         default="llama3:8b",
-        choices=BENCHMARK_CFG["openai_models"] + BENCHMARK_CFG["ollama_models"] + BENCHMARK_CFG["vllm_models"],
+        choices=BENCHMARK_CFG["openai_models"]
+        + BENCHMARK_CFG["ollama_models"]
+        + BENCHMARK_CFG["vllm_models"]
+        + BENCHMARK_CFG["agents"],
         help="The name of the benchmark you want to run",
     )
     parser.add_argument(
@@ -107,6 +117,13 @@ if __name__ == "__main__":
         choices=mmlu.SUBSETS,
         help="Subset of the MMLU benchmark you want to run",
     )
+    parser.add_argument(
+        "-t",
+        "--topics",
+        nargs="*",
+        type=str,
+        default=[],
+    )
 
     args = parser.parse_args()
     if args.benchmark == "mmlu":
@@ -115,5 +132,6 @@ if __name__ == "__main__":
         asyncio.run(
             run_scieval(
                 model=args.model,
+                topics=args.topics,
             )
         )
