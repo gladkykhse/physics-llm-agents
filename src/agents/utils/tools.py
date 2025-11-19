@@ -1,4 +1,5 @@
 import os
+import logging as log
 
 from dotenv import load_dotenv
 from langchain_core.tools import tool
@@ -7,6 +8,7 @@ from src.knowledge_bases.vector_rag import PgVectorRetriever
 from src.utils.helpers import load_yaml
 
 load_dotenv()
+log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 vector_rag_cfg = load_yaml("config/vector_rag.yaml")
 dsn = (
@@ -71,5 +73,7 @@ def retriever(query: str) -> str:
     for i, r in enumerate(results, 1):
         response += f"{i}. Source: {r['source']} (score: {r['score']:.3f})\n"
         response += f"   Content: {r['text']}\n\n"
+
+    log.info(f"[RETRIEVER] - Tool output: {response[:200]}...")
 
     return response

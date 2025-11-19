@@ -19,3 +19,5 @@ main_system_prompt: |
   Output:
   - Provide a detailed, step-by-step, solution showing all reasoning, formulas, substitutions, and calculations.
   - END WITH EXACTLY: "Answer: <A|B|C|D>"
+
+max_react_iters: 10

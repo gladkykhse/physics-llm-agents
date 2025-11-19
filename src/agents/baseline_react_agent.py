@@ -1,7 +1,10 @@
 import logging as log
+from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langgraph.prebuilt import create_react_agent
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.graph import END, StateGraph
+from langgraph.graph.message import AnyMessage, add_messages
+from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
 from src.agents.utils.tools import retriever, retriever_backend
@@ -12,61 +15,83 @@ agent_cfg = load_yaml("config/baseline_react_agent.yaml")
 log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
+class State(TypedDict):
+    messages: Annotated[List[AnyMessage], add_messages]
+    react_iter: int
+
+
 class PhysicsReactAgent:
     def __init__(self) -> None:
-        self.graph = create_react_agent(
-            make_llm(),
-            tools=[retriever],
+        self.llm = make_llm().bind_tools([retriever])
+
+        self.tools = ToolNode([retriever])
+
+        graph = StateGraph(State)
+
+        graph.add_node("agent", self._agent)
+        graph.add_node("tools", self.tools)
+
+        graph.set_entry_point("agent")
+
+        graph.add_conditional_edges(
+            "agent",
+            self._route_agent,
+            {"tools": "tools", "end": END},
         )
 
+        graph.add_edge("tools", "agent")
+
+        self.graph = graph.compile()
+
+    def _agent(self, state: State) -> State:
+        ai = self.llm.invoke(state["messages"])
+
+        log.info(f"[AGENT] Output: {ai.content}")
+
+        tool_calls = getattr(ai, "tool_calls", None)
+        if tool_calls:
+            if len(tool_calls) > 1:
+                log.info("[AGENT] - Multiple tool calls, truncating to first one")
+                ai.tool_calls = [tool_calls[0]]
+
+            log.info(f"[AGENT] - Tool Calls: {ai.tool_calls}")
+
+        state["messages"] = [*state["messages"], ai]
+        state["react_iter"] += 1
+        return state
+
+    def _route_agent(self, state: State) -> str:
+        max_iters = agent_cfg["max_react_iters"]
+        last = state["messages"][-1]
+        tcs = getattr(last, "tool_calls", None)
+
+        if state["react_iter"] >= max_iters:
+            log.info("[ROUTER] Max react iterations reached")
+            return "end"
+
+        if tcs:
+            log.info("[ROUTER] Going to tools")
+            return "tools"
+
+        log.info("[ROUTER] No tool calls, ending.")
+        return "end"
+
     def solve(self, problem: str) -> str:
-        # per-problem reset for your retriever
         retriever_backend.clear_memory()
 
-        inputs = {
+        state: State = {
             "messages": [
                 SystemMessage(content=agent_cfg["main_system_prompt"]),
                 HumanMessage(content=f"Problem:\n{problem}"),
-            ]
+            ],
+            "react_iter": 0,
         }
 
-        # Single shot, no streaming
-        result = self.graph.invoke(inputs)
+        final_state = self.graph.invoke(state, config={"recursion_limit": 200})
+        msgs = final_state.get("messages", [])
 
-        messages = result.get("messages", [])
-        if not messages:
-            return ""
+        for msg in reversed(msgs):
+            if isinstance(msg, AIMessage):
+                return msg.content
 
-        # ---- Log the whole conversation in order ----
-        for msg in messages:
-            # LangChain messages have .type and .content
-            mtype = getattr(msg, "type", None)
-            content = getattr(msg, "content", "")
-
-            if mtype == "system":
-                log.info(f"[SYSTEM] {content}")
-            elif mtype == "human":
-                log.info(f"[USER] {content}")
-            elif mtype == "tool" or isinstance(msg, ToolMessage):
-                log.info(f"[TOOL RESULT] {content}")
-            elif mtype == "ai" or isinstance(msg, AIMessage):
-                tool_calls = getattr(msg, "tool_calls", None)
-                if tool_calls:
-                    log.info(f"[AGENT TOOL CALLS] {tool_calls}")
-                log.info(f"[AGENT] {content}")
-            else:
-                log.info(f"[MESSAGE:{mtype}] {content}")
-        # ---------------------------------------------
-
-        # Final answer = last AI message in the history
-        final_ai = None
-        for msg in reversed(messages):
-            if getattr(msg, "type", None) == "ai":
-                final_ai = msg
-                break
-
-        if final_ai is None:
-            # fallback: just return content of the last message
-            return getattr(messages[-1], "content", "")
-
-        return final_ai.content
+        return msgs[-1].content if msgs else ""

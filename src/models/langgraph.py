@@ -16,4 +16,4 @@ def run_solving(
         raise ValueError(f"Unknown agent: {agent}")
 
     results = [agent.solve(problem) for problem in all_requests]
-    return pl.DataFrame({"question": all_requests, "answer": results})
+    return pl.DataFrame({"question": all_requests, "answer_agent": results})
