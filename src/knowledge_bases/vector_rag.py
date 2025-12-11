@@ -235,13 +235,13 @@ def prepare_vector_rag(
 ) -> None:
     ext_sql = read_file(extensions_path)
     tbl_tpl = read_file(create_table_path)
-    idx_tpl = read_file(create_index_path)
+    # idx_tpl = read_file(create_index_path)
 
     with psycopg.connect(dsn) as con:
         with con.cursor() as cur:
             cur.execute(ext_sql)
             cur.execute(_render(tbl_tpl, sql.Identifier(table), sql.Literal(dim)))
-            cur.execute(_render(idx_tpl, sql.Identifier(index), sql.Identifier(table), sql.Literal(lists)))
+            # cur.execute(_render(idx_tpl, sql.Identifier(index), sql.Identifier(table), sql.Literal(lists)))
         con.commit()
 
         register_vector(con)
