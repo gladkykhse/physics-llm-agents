@@ -57,7 +57,7 @@ async def run_scieval(model: str, topics: list[str]) -> None:
     df_scieval = scieval.load_dataframe(source=file_path)
 
     if topics:
-        df_scieval = df_scieval.filter(pl.col("topic").is_in(topics)).select(pl.all().shuffle())
+        df_scieval = df_scieval.filter(pl.col("topic").is_in(topics))
 
     questions = df_scieval["question"].to_list()
 

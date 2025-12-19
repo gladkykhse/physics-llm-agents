@@ -46,7 +46,7 @@ def retriever(query: str) -> str:
     results = retriever_backend(query=query, top_k=top_k)
 
     if len(results) == 0:
-        return (
+        response = (
             f"No new chunks were returned for the query `{query}`.\n\n"
             "Most likely, the top matches for this phrasing were already retrieved earlier and are present in the current "
             "context, or the retriever could not find sufficiently relevant theory for this exact wording.\n\n"

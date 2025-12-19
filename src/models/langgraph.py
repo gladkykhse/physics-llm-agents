@@ -2,6 +2,7 @@ import polars as pl
 
 from src.agents.baseline_react_agent import PhysicsReactAgent
 from src.agents.plan_react_agent import PhysicsAgent
+from src.agents.cot_plan_react_agent import COTPhysicsAgent
 
 
 def run_solving(
@@ -12,6 +13,8 @@ def run_solving(
         agent = PhysicsAgent()
     elif agent == "baseline_react_agent":
         agent = PhysicsReactAgent()
+    elif agent == "cot_plan_react_agent":
+        agent = COTPhysicsAgent()
     else:
         raise ValueError(f"Unknown agent: {agent}")
 
