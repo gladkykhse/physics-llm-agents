@@ -1,6 +1,7 @@
-import os
 import logging as log
+import os
 
+import sympy as sp
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 
@@ -54,7 +55,7 @@ def retriever(query: str) -> str:
             "- Reformulate the query more generally and with canonical terms (e.g., the law/theorem name).\n"
             "- Proceed using the theory already present in your context if it’s sufficient for grounding.\n"
         )
-    if len(results) < vector_rag_cfg["retrieve_top_k"]:
+    elif len(results) < vector_rag_cfg["retrieve_top_k"]:
         missing = top_k - len(results)
         response = (
             f"Only {len(results)} of the requested top-{top_k} most similar chunks are NEW for the query `{query}`.\n"
@@ -77,3 +78,78 @@ def retriever(query: str) -> str:
     log.info(f"[RETRIEVER] - Tool output: {response[:200]}...")
 
     return response
+
+
+@tool
+def retrieve_physics_theory(
+    query: str,
+) -> str:
+    """
+    Retrieve short physics theory excerpts from a textbook index via semantic similarity search.
+
+    Use for general concepts (definitions, laws, principles, standard formulas, qualitative explanations).
+    Not for calculations, worked examples, or problem-specific steps.
+
+    Args:
+        query (str): Short general physics concept/phrase. No problem values and no full sentences.
+
+    Returns:
+        str: Relevant textbook excerpts most similar to the provided query.
+    """
+    top_k = int(vector_rag_cfg["retrieve_top_k"])
+    results = retriever_backend(query=query, top_k=top_k)
+
+    if len(results) == 0:
+        response = (
+            f"No new chunks were returned for the query `{query}`.\n\n"
+            "Most likely, the top matches for this phrasing were already retrieved earlier and are present in the current "
+            "context, or the retriever could not find sufficiently relevant theory for this exact wording.\n\n"
+            "What you can do next:\n"
+            "- Reformulate the query more generally and with canonical terms (e.g., the law/theorem name).\n"
+            "- Proceed using the theory already present in your context if it’s sufficient for grounding.\n"
+        )
+    elif len(results) < vector_rag_cfg["retrieve_top_k"]:
+        missing = top_k - len(results)
+        response = (
+            f"Only {len(results)} of the requested top-{top_k} most similar chunks are NEW for the query `{query}`.\n"
+            f"The remaining {missing} highly similar chunk(s) were likely retrieved earlier and already exist in your "
+            "conversation context.\n\n"
+            "If you still need additional conceptual grounding, try reformulating the query more generally (prefer canonical "
+            "terminology) and call this tool again; otherwise proceed with the context you already extracted.\n\n"
+            "New chunks:\n\n"
+        )
+    else:
+        response = (
+            f"Extracted {vector_rag_cfg['retrieve_top_k']} new chunks "
+            f"for the provided query: `{query}` \nNew chunks:\n\n"
+        )
+
+    for i, r in enumerate(results, 1):
+        response += f"{i}. Source: {r['source']} (score: {r['score']:.3f})\n"
+        response += f"   Content: {r['text']}\n\n"
+
+    log.info(f"[RETRIEVER] - Tool output: {response[:200]}...")
+
+    return response
+
+
+@tool
+def sympy_eval(expression: str) -> str:
+    """
+    Evaluate a single numeric mathematical expression using SymPy.
+
+    Input:
+    - expression (str): A SymPy-compatible expression representing a numeric
+      calculation. The expression is assumed to be fully numeric and valid
+      (no variables, no equations).
+
+    Output:
+    - str: The numeric value of the expression as a string, computed using
+      SymPy's evalf().
+
+    Notes:
+    - This function performs numeric evaluation only.
+    - All substitutions, constants, and assumptions must be handled by the caller.
+    """
+    expr = sp.sympify(expression)
+    return str(expr.evalf())

@@ -7,7 +7,7 @@ from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
-from src.agents.utils.tools import retriever, retriever_backend
+from src.agents.utils.tools import sympy_eval
 from src.utils.helpers import load_yaml
 
 agent_cfg = load_yaml("config/baseline_react_agent.yaml")
@@ -22,9 +22,9 @@ class State(TypedDict):
 
 class PhysicsReactAgent:
     def __init__(self) -> None:
-        self.llm = make_llm().bind_tools([retriever])
+        self.llm = make_llm().bind_tools([sympy_eval])
 
-        self.tools = ToolNode([retriever])
+        self.tools = ToolNode([sympy_eval])
 
         graph = StateGraph(State)
 
@@ -50,10 +50,6 @@ class PhysicsReactAgent:
 
         tool_calls = getattr(ai, "tool_calls", None)
         if tool_calls:
-            if len(tool_calls) > 1:
-                log.info("[AGENT] - Multiple tool calls, truncating to first one")
-                ai.tool_calls = [tool_calls[0]]
-
             log.info(f"[AGENT] - Tool Calls: {ai.tool_calls}")
 
         state["messages"] = [*state["messages"], ai]
@@ -77,8 +73,6 @@ class PhysicsReactAgent:
         return "end"
 
     def solve(self, problem: str) -> str:
-        retriever_backend.clear_memory()
-
         state: State = {
             "messages": [
                 SystemMessage(content=agent_cfg["main_system_prompt"]),

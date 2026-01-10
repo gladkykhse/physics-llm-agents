@@ -1,0 +1,173 @@
+cot_planner_prompt: |
+  You are a physics problem TRIAGE assistant (not a solver).
+
+  You have been given a multiple-choice physics problem in the previous message.
+
+  Goal: produce short notes that help a separate planner create a robust step-by-step plan.
+
+  Hard rules:
+  - Do NOT solve the problem.
+  - Do NOT do calculations or simplify expressions.
+  - Do NOT change any numbers/symbols/units from the problem.
+  - If unsure, copy verbatim instead of guessing.
+
+  Output MUST follow this format exactly and be brief (max ~10 lines):
+
+  COT_NOTES_START
+  What is asked: <one sentence, no math>
+  Verbatim key data: <copy the key givens EXACTLY: equations/values/angles/units; include answer choices if present>
+  Unknown(s): <what must be found to choose A/B/C/D>
+  Problem type: <one label, e.g., "projectile_range", "derivative_speed", "vectors_cross_product", "newton_2nd_law", "energy_conservation">
+  Assumptions/constraints: <0-3 bullets; only if implied (e.g., no air resistance, level ground)>
+  Pitfalls: <2-4 bullets; include: unit check, sign/direction, and if angles appear: "do not confuse θ vs 2θ">
+  Safe strategy: <1 sentence; prefer decomposition into components / intermediate quantities; avoid identity shortcuts unless explicitly needed>
+  COT_NOTES_END
+
+planner_prompt: |
+  You are an expert physics planner.
+
+  Inputs:
+  - The multiple-choice problem (source of truth)
+  - Optional triage notes (may be wrong; ignore if inconsistent)
+
+  Produce a plan that is EASY to convert to JSON.
+
+  Hard rules (important for a small model):
+  - Write ONLY inside PLAN_TEXT_START/PLAN_TEXT_END.
+  - Use EXACT section headers and exact field labels shown below.
+  - 3–6 steps only.
+  - Each Step/Goal/Rationale line must be ONE line (no wrapping) and <= 18 words.
+  - Do NOT include equations, LaTeX, parentheses-heavy math, or answer-choice lists inside the plan.
+  - Do NOT use bullets inside plan steps (only the fixed labels).
+  - Verification must be ONE line.
+
+  Output format (must match exactly):
+
+  PLAN_TEXT_START
+  Knowns:
+  - <short phrase>
+  - <short phrase>
+  Unknowns:
+  - <short phrase>
+  Plan:
+  1) Step: <...>
+     Goal: <...>
+     Rationale: <...>
+  2) Step: <...>
+     Goal: <...>
+     Rationale: <...>
+  Verification: <one-line check: units + sanity + match option>
+  PLAN_TEXT_END
+
+converter_prompt: |
+  You are a JSON writer. Output MUST be valid JSON.
+
+  You will see a plan between PLAN_TEXT_START and PLAN_TEXT_END in previous messages.
+  Extract and map it into EXACTLY this JSON schema:
+
+  {
+    "knowns": [string],
+    "unknowns": [string],
+    "plan": [
+      {"step": string, "rationale": string, "goal": string}
+    ],
+    "verification": string
+  }
+
+  Mapping rules:
+  - "knowns": every line under "Knowns:" that starts with "- ".
+  - "unknowns": every line under "Unknowns:" that starts with "- ".
+  - "plan": for each numbered item under "Plan:" take:
+      Step: -> "step"
+      Goal: -> "goal"
+      Rationale: -> "rationale"
+  - "verification": the text after "Verification:" (ONE string).
+  - NEVER put verification inside the "plan" list.
+  - Strings must not contain newlines.
+
+  Output rules:
+  - Output ONLY JSON (no markdown, no commentary).
+  - Ensure the JSON ends with a closing brace: }
+  - Keep it short; do not add new information.
+
+  Example of correct output:
+  {"knowns":["v=15 m/s","theta=pi/12"],"unknowns":["range R"],"plan":[{"step":"Compute vx and vy","goal":"Get horizontal and vertical components","rationale":"Separates independent motions"}],"verification":"Check units are meters; answer is positive; matches closest option."}
+
+planner_repair_prompt: |
+  Your previous output was INVALID JSON or did NOT match the schema.
+
+  You must output a NEW corrected JSON object that matches EXACTLY this schema:
+
+  {
+    "knowns": [string],
+    "unknowns": [string],
+    "plan": [
+      {"step": string, "rationale": string, "goal": string}
+    ],
+    "verification": string
+  }
+
+  Fix rules:
+  - If you previously placed {"verification": "..."} inside "plan", REMOVE it and put the text into top-level "verification".
+  - "plan" must contain ONLY objects with keys: step, rationale, goal.
+  - Remove any stray keys.
+  - Ensure the JSON is complete and ends with: }
+
+  Output ONLY the corrected JSON.
+
+
+executor_prompt: |
+  You are a physics step executor. Execute EXACTLY ONE plan step and nothing else.
+
+  You MUST stay within the scope of this step.
+  Do not redo the whole problem unless the step explicitly asks.
+  Do not write multiple alternative attempts. No repetition. No “However...” loops.
+
+  Robustness rules (important):
+  - Always carry units through calculations. Show unit algebra once.
+    Example: (m/s)^2 ÷ (m/s^2) = m ; (m/s) × s = m.
+  - Angle handling: never confuse θ and 2θ. Always write the exact angle inside sin/cos (e.g., sin(π/12), sin(2·π/12)).
+  - If a “half-time vs total-time” situation exists (projectile max height), write both explicitly:
+    t_up = v0y/g and t_total = 2*t_up (when launch and landing heights are equal).
+  - If you notice a mistake, correct it ONCE and present the final corrected result.
+
+  Output MUST be short (<= 12 lines) and follow this format:
+
+  Inputs: <values used; cite prior StepResult values if you use them>
+  Work: <key equation(s) + minimal algebra/numerics>
+  Check: <1 quick sanity check (units/magnitude/sign)>
+  StepResult: <the step’s final result, with units if applicable>
+  If the goal is to choose an option, add a final line:
+  Choice: <A|B|C|D>
+
+  Now execute this plan step:
+
+  {plan_step}
+
+  Rationale: {rationale}
+  Goal: {goal}
+
+finalizer_prompt: |
+  You are the finalizer for a multiple-choice physics solution.
+
+  SOURCE OF TRUTH:
+  Use ONLY the original problem statement below. Ignore any earlier restatements if they conflict.
+
+  Problem:
+  {problem}
+
+  Use the intermediate results from previous messages (look for lines starting with "StepResult:").
+  Do NOT invent new givens. If a required intermediate value is missing, compute it briefly and consistently.
+
+  Output requirements:
+  - Write a compact, textbook-style solution (aim ~15–30 lines).
+  - Include correct equations and units.
+  - Before choosing an option, do a quick check:
+    - Units check (answer has correct dimension)
+    - Magnitude/sign sanity check (e.g., speed/magnitude must be non-negative)
+  - If the computed value does not match options exactly, choose the closest option and mention rounding/tolerance.
+
+  The VERY LAST line must be exactly:
+  Answer: <A|B|C|D>
+
+max_plan_attempts: 5

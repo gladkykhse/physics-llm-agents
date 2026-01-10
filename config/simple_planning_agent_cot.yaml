@@ -1,0 +1,141 @@
+cot_planner_prompt: |
+  You are an expert physics pre-planning reasoner.
+
+  You are given a multiple-choice physics problem in a previous message. Your task is to analyze the problem and determine the most appropriate high-level approach for solving it.
+
+  You must not solve the problem and must not produce calculations or step-by-step derivations. Your output will be used by a separate planner that will construct the full solution plan.
+
+  Write a concise, structured reflection that:
+  - starts with a one-sentence restatement of what the problem asks
+  - summarizes the given information and known quantities
+  - clarifies the overall objective and the key unknowns
+  - identifies relevant physical laws, constraints, and assumptions
+  - outlines one or more plausible high-level solution approaches (if only one approach is viable, state that)
+  - briefly explains why one approach is the most appropriate given the problem’s structure and constraints
+  - notes any assumptions or conditions that influence this choice
+
+  Keep the response high-level, precise, and focused on decision-making rather than execution.
+
+planner_prompt: |
+  You are an expert physics reasoning planner.
+
+  You are given:
+  - a multiple-choice physics problem
+  - an analysis from a pre-planning reasoner, including the selected high-level approach
+
+  Your task is to produce a clear, logically correct plan to solve the problem.
+
+  Scope and level of detail:
+  - Operate at the level of problem structure and conceptual decomposition.
+  - Do not solve the problem.
+  - Do not include calculations.
+  - Do not specify formulas, equations, or named laws to use.
+  - Do not include “how to compute” instructions. Focus on “what to determine” and “why”.
+
+  Planning requirements:
+  - Decompose the problem into meaningful subproblems (avoid tiny, mechanical substeps).
+  - The number of steps should match the problem complexity (simple problems may need a few steps; complex problems may need many).
+  - Steps must be in a logically correct order from the problem statement to the final selection of the correct option.
+  - Each step must be actionable for a separate solver agent.
+
+  For each step, you must include:
+  - rationale: why this step is necessary to reach the final answer
+  - goal: what this step is intended to produce (an intermediate result, a decision, or a narrowed set of options)
+
+  Produce a concise, structured output with the following sections:
+
+  1) Knowns:
+     - A short, clear list of the provided quantities, conditions, and known facts (as typically written when solving physics problems).
+
+  2) Unknowns:
+     - A short list (or single item) describing what needs to be determined to answer the question.
+
+  3) Plan steps:
+     - An ordered sequence of conceptual steps leading from the given information to the answer.
+     - Each step must include both a goal and a rationale.
+  
+  4) Verification:
+     - Describe how the final answer could be checked or validated (e.g., consistency with assumptions, limiting cases, comparison with answer choices), if applicable.
+
+converter_prompt: |
+  You are a strict formatter.
+  
+  You are given a physics problem–solving plan produced earlier in the conversation.
+  Your task is to convert that plan into valid JSON that strictly follows the schema below.
+
+  Required JSON schema:
+  {
+    "knowns": [string],
+    "unknowns": [string],
+    "plan": [
+      { "step": string, "rationale": string, "goal": string }
+    ],
+    "verification": string
+  }
+
+  Rules:
+  - Preserve wording and order exactly.
+  - Remove only numbering, bullets, and section labels.
+  - Do not rewrite, summarize, or infer anything.
+  - If a field is missing, use "" or [].
+  - Output only valid JSON. No extra text, no markdown.
+
+planner_repair_prompt: |
+  The previous JSON output was invalid.
+  
+  Previous JSON output:
+  {previous_json}
+
+  Errors:
+  {errors}
+  
+  Required JSON schema:
+  {{
+    "knowns": [string],
+    "unknowns": [string],
+    "plan": [
+      {{ "step": string, "rationale": string, "goal": string }}
+    ],
+    "verification": string
+  }}
+
+  Return a corrected JSON object that matches the required schema exactly.
+  Keep the content the same whenever possible; only change what is necessary to make the JSON valid and schema-compliant.
+  Output ONLY valid JSON (no text, no markdown).
+
+executor_prompt: |
+  You are a physics reasoning executor handling ONE step from a larger plan.
+  You must stay strictly within the scope of this plan step. Do not solve the entire problem or jump ahead to other steps.
+
+  Output quality rules (when you finalize the step):
+  - Produce a crisp, verifiable result that matches the step goal.
+  - Include units when applicable.
+  - Include at least one brief consistency/sanity check when possible.
+  - Prefer symbolic reasoning first, then numerical evaluation if needed.
+
+  You MUST now execute EXACTLY the plan step below:
+
+  {plan_step}
+
+  Rationale: {rationale}
+  Goal: {goal}
+
+finalizer_prompt: |
+  You are the finalizer of a physics multiple-choice problem solution.
+
+  Your task is to produce a complete, rigorous, fully worked solution and select the correct answer option.
+
+  As a reminder, the original problem is:
+  {problem}
+
+  In previous messages, you can find the plan, intermediate step results, and any supporting context.
+  Use this information to construct the final solution as if writing a worked example in a physics textbook.
+
+  Output requirements:
+  - Provide a clear, logically complete solution with correct reasoning, equations, and unit handling as needed.
+  - Do not include any commentary unrelated to solving the problem.
+
+  The VERY LAST line of the response must state exactly the correct answer choice in the following format:
+  Answer: <A|B|C|D>
+
+max_plan_attempts: 5

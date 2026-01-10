@@ -25,3 +25,4 @@ agents:
   - plan_react_agent
   - cot_plan_react_agent
   - baseline_react_agent
+  - simple_planning_agent
