@@ -29,12 +29,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
     df = pl.read_parquet(source=args.filename)
     if args.benchmark == "scieval":
-        results = scieval.parse_results_to_dict(df=df)
+        results = scieval.parse_results_to_dict(
+            df=df, model_answer_col="answer_ai", single_letter_ai_answer="_standard_" in args.filename
+        )
         no_extension = os.path.splitext(args.filename)[0]
         save_json(obj=results, filename=f"{no_extension}.json")
         scieval.plot_results(results_json=results, filename=f"{no_extension}.png")
+        scieval.print_results_table(results_json=results)
     elif args.benchmark == "mmlu":
-        results = mmlu.parse_results_to_dict(df=df)
+        results = mmlu.parse_results_to_dict(
+            df=df, model_answer_col="answer_ai", single_letter_ai_answer="_standard_" in args.filename
+        )
         no_extension = os.path.splitext(args.filename)[0]
         save_json(obj=results, filename=f"{no_extension}.json")
         mmlu.plot_results(results_json=results, filename=f"{no_extension}.png")
+        mmlu.print_results_table(results_json=results)

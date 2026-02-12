@@ -7,7 +7,7 @@ load_dotenv()
 
 
 def make_llm(
-    model: str = "meta-llama/Llama-3.1-8B-Instruct", temperature: int = 0.0, max_tokens: int = 2048
+    model: str = "meta-llama/Llama-3.1-8B-Instruct", temperature: float = 0.1, max_tokens: int = 2048
 ) -> ChatOpenAI:
     return ChatOpenAI(
         base_url=f"{os.environ['VLLM_HOST']}:{os.environ['VLLM_PORT']}/v1",

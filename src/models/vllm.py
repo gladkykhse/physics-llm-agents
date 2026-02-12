@@ -81,4 +81,4 @@ async def run_completion(
             print(f"Answer length = {len(item)}")
         results.extend(answers_batch)
 
-    return pl.DataFrame({"question": all_requests, "answer": results})
+    return pl.DataFrame({"question": all_requests, "answer_ai": results})

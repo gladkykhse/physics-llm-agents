@@ -1,0 +1,22 @@
+[project]
+name = "physics-llm-agents"
+version = "0.1.0.dev0"
+description = "Enhancing Physics Problem Solving in LLM Agents with Knowledge Graphs and Symbolic Math Tools"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "datasets>=4.5.0",
+    "dotenv>=0.9.9",
+    "langchain-core>=1.2.11",
+    "langchain-openai>=1.1.9",
+    "langgraph>=1.0.8",
+    "matplotlib>=3.10.8",
+    "nltk>=3.9.2",
+    "ollama>=0.6.1",
+    "pgvector>=0.4.2",
+    "polars>=1.38.1",
+    "psycopg>=3.3.2",
+    "rich>=14.3.2",
+    "sentence-transformers>=5.2.2",
+    "sympy>=1.14.0",
+]

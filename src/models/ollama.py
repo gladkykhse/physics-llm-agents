@@ -43,4 +43,4 @@ async def run_completion(
         answers = await asyncio.gather(*tasks)  # preserves order
         results.extend(answers)
 
-    return pl.DataFrame({"question": all_requests, "answer": results})
+    return pl.DataFrame({"question": all_requests, "answer_ai": results})

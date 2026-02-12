@@ -79,6 +79,6 @@ async def run_batched_completion(
     return pl.DataFrame(
         {
             "question": [response["initial_request"] for response in results],
-            "answer": [response["choices"][0]["message"]["content"] for response in results],
+            "answer_ai": [response["choices"][0]["message"]["content"] for response in results],
         }
     )

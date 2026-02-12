@@ -4,6 +4,11 @@ import datasets
 import matplotlib.pyplot as plt
 import polars as pl
 
+from rich.console import Console
+from rich.table import Table
+from rich import box
+
+
 SUBSETS = [
     "college_physics",
     "conceptual_physics",
@@ -75,66 +80,71 @@ def preprocess_questions(df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def parse_results_to_dict(df: pl.DataFrame) -> dict[str, object]:
+def parse_results_to_dict(
+    df: pl.DataFrame,
+    model_answer_col: str = "answer_ai",
+    single_letter_ai_answer: bool = False,
+) -> dict[str, object]:
+    if single_letter_ai_answer:
+        df = df.with_columns(
+            pl.col(model_answer_col).str.extract(r"([ABCD])").alias("pred_ans")
+        )
+    else:
+        df = df.with_columns(
+            pl.col(model_answer_col)
+            .str.extract(r"(?i)answer.*?([ABCD])")
+            .str.to_uppercase()
+            .alias("pred_ans")
+        )
+
     df = df.with_columns(
-        std_ans=pl.col("answer_standard_system_prompt").str.extract(r"([ABCD])"),
-        cot_ans=pl.col("answer_cot_system_prompt").str.extract(r"(?i)answer.*?([ABCD])").str.to_uppercase(),
+        pl.col("pred_ans").is_not_null().alias("answered"),
+    )
+
+    df = df.with_columns(
         answer_list=pl.when(pl.col("answer").is_not_null())
-        .then(pl.col("answer").map_elements(lambda x: [NUM_TO_LETTER[x]], return_dtype=pl.List(pl.String)))
-        .otherwise(None),
+        .then(
+            pl.col("answer").map_elements(
+                lambda x: [NUM_TO_LETTER[x]],
+                return_dtype=pl.List(pl.String),
+            )
+        )
+        .otherwise(None)
     )
 
     df = df.with_columns(
-        answered_std=pl.col("std_ans").is_not_null(),
-        answered_cot=pl.col("cot_ans").is_not_null(),
+        pl.when(pl.col("answered") & pl.col("answer_list").is_not_null())
+        .then(pl.col("answer_list").list.contains(pl.col("pred_ans")).fill_null(False))
+        .otherwise(False)
+        .alias("correct")
     )
 
     df = df.with_columns(
-        correct_std=pl.when(pl.col("answered_std") & pl.col("answer_list").is_not_null())
-        .then(pl.col("answer_list").list.contains(pl.col("std_ans")).fill_null(False))
-        .otherwise(False),
-        correct_cot=pl.when(pl.col("answered_cot") & pl.col("answer_list").is_not_null())
-        .then(pl.col("answer_list").list.contains(pl.col("cot_ans")).fill_null(False))
-        .otherwise(False),
-    ).with_columns(
-        # Incorrect = answered but wrong; Not answered = no parsed letter
-        incorrect_std=pl.col("answered_std") & (~pl.col("correct_std")),
-        incorrect_cot=pl.col("answered_cot") & (~pl.col("correct_cot")),
-        not_answered_std=~pl.col("answered_std"),
-        not_answered_cot=~pl.col("answered_cot"),
+        (pl.col("answered") & (~pl.col("correct"))).alias("incorrect"),
+        (~pl.col("answered")).alias("not_answered"),
     )
 
-    results_json = {
-        "standard": {
-            "correct": round(float(df["correct_std"].mean()), 4),
-            "incorrect": round(float(df["incorrect_std"].mean()), 4),
-            "not_answered": round(float(df["not_answered_std"].mean()), 4),
-        },
-        "cot": {
-            "correct": round(float(df["correct_cot"].mean()), 4),
-            "incorrect": round(float(df["incorrect_cot"].mean()), 4),
-            "not_answered": round(float(df["not_answered_cot"].mean()), 4),
-        },
+    return {
+        "correct": round(float(df["correct"].mean()), 4),
+        "incorrect": round(float(df["incorrect"].mean()), 4),
+        "not_answered": round(float(df["not_answered"].mean()), 4),
     }
-
-    return results_json
 
 
 def plot_results(results_json: dict[str, object], filename: str) -> None:
-    # Extract values
-    standard = results_json["standard"]
-    cot = results_json["cot"]
+    correct = results_json["correct"]
+    not_answered = results_json["not_answered"]
+    incorrect = results_json["incorrect"]
 
-    labels = ["Standard", "CoT"]
-    correct = [standard["correct"], cot["correct"]]
-    not_answered = [standard["not_answered"], cot["not_answered"]]
-    incorrect = [standard["incorrect"], cot["incorrect"]]
-
-    # Plot stacked bars
     plt.figure(figsize=(6, 4))
-    plt.bar(labels, correct, color="green", label="Correct")
-    plt.bar(labels, not_answered, bottom=correct, color="gold", label="Not Answered")
-    plt.bar(labels, incorrect, bottom=[c + n for c, n in zip(correct, not_answered)], color="red", label="Incorrect")
+    plt.bar(["Model"], [correct], label="Correct")
+    plt.bar(["Model"], [not_answered], bottom=[correct], label="Not Answered")
+    plt.bar(
+        ["Model"],
+        [incorrect],
+        bottom=[correct + not_answered],
+        label="Incorrect",
+    )
 
     plt.title("Performance Breakdown")
     plt.ylabel("Percentage")
@@ -143,3 +153,17 @@ def plot_results(results_json: dict[str, object], filename: str) -> None:
     plt.tight_layout()
     plt.savefig(filename)
     plt.close()
+
+
+def print_results_table(results_json: dict[str, object], title: str = "MMLU Benchmark Results") -> None:
+    console = Console()
+
+    overall = Table(title=title, box=box.SIMPLE_HEAVY)
+    overall.add_column("Metric", style="bold")
+    overall.add_column("Value", justify="right")
+
+    overall.add_row("Correct", f"{results_json['correct'] * 100:.2f}%")
+    overall.add_row("Incorrect", f"{results_json['incorrect'] * 100:.2f}%")
+    overall.add_row("Not Answered", f"{results_json['not_answered'] * 100:.2f}%")
+
+    console.print(overall)
