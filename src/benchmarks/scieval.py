@@ -4,10 +4,9 @@ import datasets
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 
 def get_dataset(save_dir: str = "benchmarks") -> str:

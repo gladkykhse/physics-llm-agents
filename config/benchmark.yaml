@@ -23,3 +23,7 @@ vllm_models:
 
 agents:
   - thinking_react_agent
+  - thinking_react_agent_knowledge_only
+  - thinking_react_agent_math_only
+  - thinking_react_agent_sequential
+  - thinking_react_agent_knowledge_only_sequential

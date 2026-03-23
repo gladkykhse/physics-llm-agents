@@ -3,11 +3,9 @@ import os
 import datasets
 import matplotlib.pyplot as plt
 import polars as pl
-
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
-
 
 SUBSETS = [
     "college_physics",

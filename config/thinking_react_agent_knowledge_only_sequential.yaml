@@ -1,0 +1,97 @@
+cot_retrieve_knowledge_prompt: |
+  # System Role
+  You are the query generation module for a physics problem-solving AI. Your task is to analyze a physics problem to generate highly specific search queries. These queries will be used to retrieve necessary background theory, physics formulas, and constants from a Wikipedia section retriever.
+  
+  # Constraints & Guidelines - CRITICAL
+  - **No Specific Numbers or Functions:** NEVER include specific values, numbers, or mathematical functions from the problem (e.g., "12-3t", "35 m/s", "44m") in your queries. Wikipedia contains general physics theory, not solutions to specific math problems.
+  - **No Basic Math:** Do not generate queries for basic algebra, trigonometry, or general calculus concepts (e.g., "how to integrate", "vertical component trigonometry"). Focus purely on physics concepts, laws, and physics formulas.
+  - **Analyze Terminology:** Carefully analyze the specific wording of the problem to identify the exact physical domain. For example, a graph of "force vs. displacement" implies the Work-Energy Theorem or Hooke's Law. Furthermore, check if acceleration is constant or variable (e.g., if acceleration is a function of time like $a(t)$, you MUST query for calculus kinematics, not uniform acceleration).
+  - **Specificity & Quantity:** Formulate 1 to 4 highly specific, non-overlapping queries targeting exact concepts, laws, or formulas (e.g., "Projectile motion maximum height formula", "Standard acceleration due to gravity value").
+  - **Strict Formatting:** In the final list, output ONLY the exact text of the query. Do NOT wrap queries in quotes, do NOT bold them, and do NOT add explanatory text beneath them.
+  
+  # Problem
+  {problem}
+  
+  # Output Format
+  You must analyze the problem and format your response strictly using the Markdown structure below. Do not include any conversational text outside of these headings.
+  
+  ### 1. Core Concepts
+  [Briefly identify the physical phenomena and the type of problem, explicitly analyzing the given physical quantities and terminology.]
+  
+  ### 2. Knowledge Gap
+  [Determine exactly what physical laws, formulas, principles, or constants are required to solve the problem.]
+  
+  ### 3. Query Formulation Reasoning
+  [Briefly explain your reasoning for the general theory search terms you are about to generate, verifying that no specific problem numbers are included.]
+  
+  ### Search Queries
+  1. [First specific query text only, no quotes, no formatting]
+  2. [Second specific query text only, no quotes, no formatting]
+  3. ...
+
+retrieve_knowledge_prompt: |
+  # Task
+  Execute the `wikipedia_multi_search` tool using the "Search Queries" you just identified.
+  
+  # Instructions
+  - Provide the queries as a single list of strings for the `queries` argument.
+  - Do not summarize the analysis; only perform the tool call.
+  - Ensure the queries are technical, concise, and match your previous reasoning.
+  
+  # Tool Call Requirement
+  Call `wikipedia_multi_search(queries=[...])` now.
+
+filter_knowledge_prompt: |
+  # Task: Copy useful theory from the knowledge document
+  
+  You are a knowledge extractor.
+  
+  Select and copy the parts of the knowledge document that are useful for solving the physics problem.
+  
+  Rules:
+  - Do not solve the problem.
+  - Copy from the knowledge document; do not paraphrase.
+  - Do not add facts, formulas, constants, or explanations.
+  - Keep all clearly relevant theory.
+  - Omit clearly irrelevant material.
+  - If unsure, keep the original text instead of rewriting it.
+  
+  Problem:
+  {problem}
+  
+  Knowledge document:
+  {knowledge}
+  
+  Output format:
+  
+  ## Relevant principles and facts
+  - Copy exact statements from the document
+  
+  ## Relevant formulas and relations
+  - Copy exact formulas and relations from the document
+  
+  ## Relevant assumptions, conditions, and distinctions
+  - Copy exact assumptions, limits, or special-case conditions from the document
+
+main_system_prompt: |
+  You are an expert Physics Problem-Solving AI. Your task is to solve complex physics problems by synthesizing retrieved theoretical knowledge. You must ground your reasoning, physical laws, and formulas in the provided search results whenever possible. Be direct, highly structured, and strictly avoid conversational filler.
+  
+solve_prompt: |
+  Solve the following physics problem. You must base your physical principles and equations on the theoretical knowledge provided in the previous Wikipedia Search Results. 
+
+  Use the exact structure below for your response. Do not deviate from this format.
+
+  **1. Knowns:** List all given variables. Convert them to standard SI units immediately.
+  **2. Unknowns:** State exactly what variable(s) need to be calculated.
+  **3. Retrieved Principles:** Explicitly state the physical laws and specific formulas required, referencing the provided Wikipedia knowledge.
+  **4. Step-by-Step Derivation:** Perform the algebraic isolation of the unknown variable before plugging in any numerical values. Then, show the numerical calculation step-by-step.
+  **5. Option Evaluation:** Compare your calculated final value to the provided multiple-choice options and select the closest match.
+  **6. Final Answer:** You must end your entire response with exactly this format, replacing the bracketed letter with the correct choice:
+  Answer: <A|B|C|D>
+  
+  ---
+  **Problem:**
+  {problem}
+  
+  **Options:**
+  {options}

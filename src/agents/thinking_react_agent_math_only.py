@@ -8,11 +8,11 @@ from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
-from src.agents.utils.tools import sympy_eval, sympy_solve, vector_math, wikipedia_search
+from src.agents.utils.tools import retriever_backend, sympy_eval, sympy_solve, vector_math
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 
-agent_cfg = load_yaml("config/thinking_react_agent.yaml")
+agent_cfg = load_yaml("config/thinking_react_agent_math_only.yaml")
 
 log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -26,7 +26,7 @@ class State(TypedDict):
 
 class PhysicsReactAgent:
     def __init__(self) -> None:
-        tools_list = [sympy_eval, vector_math, sympy_solve, wikipedia_search]
+        tools_list = [sympy_eval, vector_math, sympy_solve]
 
         self.base_llm = make_llm(temperature=0.0)
         self.tools_llm = make_llm(temperature=0.0).bind_tools(tools_list)
@@ -152,6 +152,7 @@ class PhysicsReactAgent:
             "options": options,
             "react_iter": 0,
         }
+        retriever_backend.clear_memory()
         self.memory = set()
 
         final_state = self.graph.invoke(state, config={"recursion_limit": 200})
