@@ -8,7 +8,7 @@ from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
-from src.agents.utils.tools import wikipedia_multi_search
+from src.agents.utils.llamaindex_wikipedia_multi_search import wikipedia_multi_search
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 

@@ -99,8 +99,6 @@ finalizer_prompt: |
 
   Problem: {problem}
 
-  Options: {options}
-
   Instructions:
   - Write a short solution (3-5 sentences max) stating the key formula used, the main computation, and the result.
   - Compare your result to the answer choices. Pick the closest match.

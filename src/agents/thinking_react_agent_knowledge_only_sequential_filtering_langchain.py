@@ -8,7 +8,7 @@ from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
-from src.agents.utils.tools import wikipedia_multi_search
+from src.agents.utils.langchain_community_wikipedia_multi_search import wikipedia_multi_search
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 
@@ -83,19 +83,20 @@ class PhysicsReactAgent:
 
         # =======================================================
         # Uncomment for LLM-based filtering of retrieved sections
-        # prompt = HumanMessage(
-        #     content=agent_cfg["filter_knowledge_prompt"].format(problem=state["problem"], knowledge=knowledge_str))
-        # ai = self.base_llm.invoke([prompt])
-        #
-        # filtered_knowledge = "# Wikipedia Search Results\n\n" + ai.content
-        # log.info(f"[FILTER_KNOWLEDGE] - Output: {filtered_knowledge}")
+        prompt = HumanMessage(
+            content=agent_cfg["filter_knowledge_prompt"].format(problem=state["problem"], knowledge=knowledge_str)
+        )
+        ai = self.base_llm.invoke([prompt])
+
+        filtered_knowledge = "# Wikipedia Search Results\n\n" + ai.content
+        log.info(f"[FILTER_KNOWLEDGE] - Output: {filtered_knowledge}")
         # =======================================================
 
-        state["messages"] = [AIMessage(content=knowledge_str)]
+        # state["messages"] = [AIMessage(content=knowledge_str)]
 
         # =======================================================
         # Uncomment for LLM-based filtering of retrieved sections
-        # state["messages"] = [AIMessage(content=filtered_knowledge)]
+        state["messages"] = [AIMessage(content=filtered_knowledge)]
         # =======================================================
 
         return state

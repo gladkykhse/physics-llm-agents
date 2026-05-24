@@ -18,12 +18,12 @@ ollama_models:
   - mightykatun/qwen2.5-math:7b
 
 vllm_models:
+  - meta-llama/Llama-3.1-70B-Instruct
   - meta-llama/Llama-3.1-8B-Instruct
-  - meta-llama/Llama-3.1-8B
+  - Qwen/Qwen2.5-7B
+  - microsoft/Phi-4-mini-instruct
+  - Qwen/Qwen3-8B
 
-agents:
-  - thinking_react_agent
-  - thinking_react_agent_knowledge_only
-  - thinking_react_agent_math_only
-  - thinking_react_agent_sequential
-  - thinking_react_agent_knowledge_only_sequential
+huggingface_models:
+  - zd21/SciGLM-6B
+  - OpenDFM/SciDFM-MoE-A5.6B-v1.0

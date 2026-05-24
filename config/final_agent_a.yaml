@@ -1,0 +1,295 @@
+# =====================================================================
+# Combined Agent — Architecture A
+# Knowledge Retrieval + Planning + Math Tools
+# Linear pipeline: classify -> retrieve -> filter -> {theory | plan -> execute -> finalize}
+# =====================================================================
+
+# ── classification ───────────────────────────────────────────────────────
+problem_type_router_prompt: |
+  Classify this physics problem:
+  - MATHEMATICAL: the problem gives specific numerical inputs and requires you to perform arithmetic, algebra, or substitution to derive the answer.
+  - THEORETICAL: the answer comes from recalling a physics concept, definition, law, formula, or known constant — no calculation on problem-specific inputs is needed.
+
+  Problem:
+  {problem}
+
+  In one sentence, state what the problem is asking you to DO: is it asking you to compute a result from numerical inputs given in the problem, or to recall/identify a physics concept, definition, formula, or known value? Then on a new line output exactly:
+  ANSWER: MATHEMATICAL
+  or
+  ANSWER: THEORETICAL
+
+
+# ── knowledge retrieval phase ────────────────────────────────────────────
+cot_retrieve_knowledge_prompt: |
+  Your task is to analyze a physics problem and generate search queries to retrieve relevant theory and formulas from Wikipedia.
+
+  Rules:
+  - NEVER include specific numbers, values, or functions from the problem in your queries. Wikipedia contains general theory, not specific solutions.
+  - Do not query for basic math, algebra, or trigonometry. Focus only on physics concepts, laws, and formulas.
+  - Carefully analyze the problem wording to identify the exact physical domain.
+  - Generate 1 to 4 specific, non-overlapping queries.
+
+  # Problem
+  {problem}
+
+  # Output Format
+
+  ### 1. Core Concepts
+  [Identify the physical phenomena and type of problem.]
+
+  ### 2. Knowledge Gap
+  [What laws, formulas, or constants are needed to solve this?]
+
+  ### 3. Query Reasoning
+  [Briefly explain your search terms. Verify no problem-specific numbers are included.]
+
+  ### Search Queries
+  1. query text here
+  2. query text here
+  3. ...
+
+retrieve_knowledge_prompt: |
+  # Task
+  Execute the `wikipedia_multi_search` tool using the "Search Queries" you just identified.
+
+  # Instructions
+  - Provide the queries as a single list of strings for the `queries` argument.
+  - Do not summarize the analysis; only perform the tool call.
+  - Ensure the queries are technical, concise, and match your previous reasoning.
+
+  # Tool Call Requirement
+  Call `wikipedia_multi_search(queries=[...])` now.
+
+filter_knowledge_prompt: |
+  Select and copy the parts of the knowledge document that are useful for solving this physics problem. Do not solve the problem. Do not add any information that is not in the document.
+
+  Problem:
+  {problem}
+
+  Knowledge document:
+  {knowledge}
+
+  Output:
+
+  ## Relevant principles and facts
+  - Copy exact statements from the document
+
+  ## Relevant formulas
+  - Copy exact formulas from the document
+
+  ## Relevant conditions and assumptions
+  - Copy exact conditions or special cases from the document
+
+
+# ── theory path ──────────────────────────────────────────────────────────
+theory_system_prompt: |
+  You are an expert physics problem-solving AI. Your task is to solve physics problems using retrieved knowledge when it is relevant and your own physics knowledge when it is not. Be direct and structured.
+
+solve_prompt: |
+  Think step by step to solve the problem below. Use the Wikipedia Search Results above if they are relevant. If they are incomplete or not useful, rely on your own physics knowledge.
+
+  **Step 1 — Identify:** List the key given information. If numerical, convert to SI units.
+  **Step 2 — Reasoning:** State the relevant physical principles. If the problem requires math, show the full calculation step by step. If the problem is theoretical, explain the logical reasoning.
+  **Step 3 — Verify:** Write out every option A, B, C, D with its value. Compare each one to your result. State which one matches or is closest.
+  **Step 4 — Answer:** On the very last line, write your answer in this exact format and nothing else:
+  Answer: X
+  where X is A, B, C, or D.
+
+  Correct example: Answer: B
+
+  ---
+  **Problem:**
+  {problem}
+
+
+# ── math path: system prompt ─────────────────────────────────────────────
+math_system_prompt: |
+  You are an expert Physics Problem-Solving Agent. Your goal is to solve college-level physics problems with high precision.
+
+  You operate in a Plan-and-Execute workflow:
+  1. ANALYZE the problem briefly.
+  2. Build a step-by-step PLAN of ATOMIC steps.
+  3. EXECUTE each step in order. For each step, you produce EITHER one tool call OR one short piece of pure-text reasoning — never both.
+  4. FINALIZE by selecting the answer option (A, B, C, or D).
+
+  You may be provided with retrieved physics knowledge containing relevant formulas, constants, or principles. Use them when relevant. If they are incomplete or not useful, rely on your own physics knowledge.
+
+  ## TOOL SELECTION RULES
+
+  ### 1. sympy_eval(expression: str) -> str
+  - Purpose: Evaluates a FULLY NUMERIC mathematical expression. This is your primary computation tool.
+  - Use for: Any arithmetic, any formula where ALL values are known numbers.
+  - Expression Rules:
+    * EVERY variable must be replaced with its numeric value BEFORE calling.
+    * Use explicit parentheses for grouping: (12 - 1) / 3, NOT 12 - 1 / 3.
+    * Trigonometric functions use RADIANS. If a problem gives degrees, convert: cos(60 * pi / 180), NOT cos(60).
+    * Use ** for exponents: 3**2, NOT 3^2.
+  - Calculus: You may use diff() and integrate(), but you MUST chain .subs(variable, value) to get a number.
+    Example: diff(sin(2*t - pi/3), t).subs(t, 2*pi/3) — this returns a number.
+    WRONG: diff(sin(2*t - pi/3), t) — this returns an expression with t, not a number.
+  - RESTRICTION: Scalars only. No vectors, no lists, no equations with '='.
+
+  ### 2. sympy_solve(equation: str, symbol: str = None) -> str
+  - Purpose: Solves an equation for ONE unknown variable.
+  - Use ONLY when: You have an equation with exactly one unknown and need to isolate it.
+  - Before calling: Substitute ALL known numeric values. The equation should contain numbers and only ONE letter.
+    Example: "2 + 2*t - 4.905*t**2 = 0" with symbol="t" — correct, only t is unknown.
+    WRONG: "v0*sin(alpha)*t - 5*t**2 = 35" — has v0, alpha, AND t as unknowns.
+  - Use explicit multiplication: 5*x, NOT 5x.
+  - If multiple solutions are returned, select the physically meaningful one (e.g., positive time).
+  - Do NOT use if the variable is already isolated. Use sympy_eval instead for direct computation.
+
+  ### 3. vector_math(operation: str, v1: str, v2: str = None, scalar: str = None) -> str
+  - Purpose: Performs vector algebra on COMPONENT VECTORS given as numeric lists.
+  - Operations: magnitude, distance, normalize, dot, cross, add, sub, scale, angle.
+  - Use ONLY when: You need a genuine vector operation on multi-component vectors.
+    Example: cross product of [2, -3, 4] and [1, 1, -7] — correct use.
+    Example: magnitude of displacement vector [10, -9, 9] — correct use.
+  - NEVER use vector_math for simple scalar math. These should ALL use sympy_eval:
+    * Computing v0 * cos(theta) → sympy_eval("17 * cos(pi/4)")
+    * Computing distance / time → sympy_eval("16.19 / 6")
+    * Computing 0.5 * g * t**2 → sympy_eval("0.5 * 9.81 * 2.15**2")
+  - scale operation MULTIPLIES v1 by scalar. To DIVIDE, pass scalar as a fraction: scalar="1/3", NOT scalar="3".
+  - All vector components must be pure numbers. WRONG: "[3*cos(pi/6), 3*sin(pi/6)]". Compute components first with sympy_eval, then pass the numeric list.
+
+  ## EXECUTION RULES
+
+  1. **One tool call per step, max.** Each plan step is atomic. When executing a step, you must choose ONE mode:
+     - TOOL MODE: emit exactly one tool call with all values substituted, and no text.
+     - TEXT MODE: emit short pure-text reasoning (2-4 sentences), and no tool call.
+     You CANNOT mix the two in the same step. Pick the right mode based on the step description.
+
+  2. **No re-computation.** If a previous step already produced a value, reference it. Do not recompute it.
+
+  3. **No skipping or merging steps.** Do exactly what the current step asks; the next steps will be triggered automatically.
+
+
+# ── math path: analyze ───────────────────────────────────────────────────
+analyze_prompt: |
+  ## ANALYZE
+
+  Before making a plan, briefly analyze this problem:
+  - What information is given (with values and units)?
+  - What needs to be found?
+  - Which physics principles or formulas apply? Use the retrieved knowledge above if it is relevant.
+  - At a high level, what approach will you use?
+
+  Keep this concise (under 200 words). Do not solve the problem yet.
+
+
+# ── math path: plan ──────────────────────────────────────────────────────
+plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## PLAN
+
+  Based on the analysis above and the retrieved knowledge, write a step-by-step plan to solve the problem.
+
+  ### HARD RULES — every step must be ATOMIC
+
+  Each step must be EXACTLY ONE of these two kinds:
+
+  - **CALC step** — exactly one numerical calculation, equation to solve, or vector operation.
+    Substitute all known values explicitly inside the step description.
+    Examples:
+      "Compute v = u + a*t with u=0, a=9.81, t=2."
+      "Solve 4.905*t**2 - 19.6 = 0 for t."
+      "Compute the magnitude of the vector [3, -4, 12]."
+
+  - **REASON step** — exactly one piece of pure reasoning (no calculation).
+    Examples:
+      "Identify the relevant formula for projectile range."
+      "State the assumed conditions (e.g. negligible air resistance)."
+      "Decide which kinematic equation applies given that initial velocity is unknown."
+
+  ### Forbidden patterns
+
+  - DO NOT combine reasoning and a calculation in one step ("State the formula and compute it" → split into two steps).
+  - DO NOT combine two calculations in one step ("Compute the velocity then compute the energy" → split into two steps).
+  - DO NOT include verification, comparison to options, or final-answer selection — those happen later automatically.
+
+  ### Output format
+
+  - Write 3 to 5 steps.
+  - Respond with ONLY a numbered list, no other text, no headers.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+
+# ── math path: fix_plan (used when plan parsing fails) ───────────────────
+fix_plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## Your Previous Response (could not be parsed as a numbered list)
+  {failed_output}
+
+  Rewrite your plan as ONLY a numbered list. Each step must be atomic (one calculation OR one piece of reasoning, never both). Write 3 to 5 steps. No other text, no headers.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+
+# ── math path: execute (fresh step start) ────────────────────────────────
+execute_step_prompt: |
+  ## EXECUTE STEP {step_number} OF {total_steps}
+
+  Task: {step_description}
+
+  This step is ATOMIC. You must respond in EXACTLY ONE of these two modes:
+
+  - **TOOL MODE** — if this step is a numerical calculation, an equation to solve, or a vector operation:
+    * Call EXACTLY ONE tool with all known values substituted in.
+    * Do NOT include any explanatory text. Only the tool call.
+
+  - **TEXT MODE** — if this step is pure reasoning (identifying a formula, stating a principle, choosing an approach, naming a quantity):
+    * Write a short answer (2-4 sentences).
+    * Do NOT call any tool.
+
+  Choose ONE mode. Do not mix them. Use results from previous steps if needed.
+
+
+# ── math path: summarize step (post-tool wrap-up) ────────────────────────
+summarize_step_prompt: |
+  ## RESULT OF STEP {step_number} OF {total_steps}
+
+  You just called `{tool_name}` to carry out step {step_number}: {step_description}
+  The tool result is in the previous message.
+
+  Now state the conclusion of this step in 1-2 sentences:
+  - What quantity was computed?
+  - What is its numerical value (with units when applicable)?
+
+  Do not call any tool. Do not start the next step. Just write the conclusion as plain text.
+
+
+# ── finalize ─────────────────────────────────────────────────────────────
+finalizer_prompt: |
+  ## PHASE: FINAL ANSWER
+
+  Problem: {problem}
+
+  Using the reasoning and computations above, provide your answer.
+  - Write a brief solution (3-5 sentences): state the approach, the key result, and the units.
+  - Compare your computed value to the answer choices and pick the closest match.
+  - If your computed value does not match any option exactly, choose the nearest one. Do NOT recompute or second-guess earlier steps.
+  - You MUST select exactly one letter: A, B, C, or D.
+
+  Format:
+  Solution: [brief solution]
+  Calculated Result: [value with units]
+  Answer: <A|B|C|D>
+
+
+# ── limits ───────────────────────────────────────────────────────────────
+max_plan_fix_iters: 3
+
+# Bound on how many plan steps may be executed. Set slightly above the typical
+# plan length (3-5) to absorb the rare edge case while preventing runaway loops.
+max_execute_steps: 8

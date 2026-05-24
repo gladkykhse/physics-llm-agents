@@ -15,7 +15,8 @@ main_system_prompt: |
     * Use ** for exponents: 3**2, NOT 3^2.
   - Calculus: You may use diff() and integrate(), but you MUST chain .subs(variable, value) to get a number.
     Example: diff(sin(2*t - pi/3), t).subs(t, 2*pi/3) — this returns a number.
-    WRONG: diff(sin(2*t - pi/3), t) — this returns an expression with t, not a number.
+    For definite integrals: integrate(expression, (t, 0, 4)) — note the parentheses around (t, 0, 4).
+    WRONG: integrate(f, t, 0, 4) — this will fail, the limits must be a tuple.
   - RESTRICTION: Scalars only. No vectors, no lists, no equations with '='.
 
   ### 2. sympy_solve(equation: str, symbol: str = None) -> str
@@ -34,6 +35,7 @@ main_system_prompt: |
   - Use ONLY when: You need a genuine vector operation on multi-component vectors.
     Example: cross product of [2, -3, 4] and [1, 1, -7] — correct use.
     Example: magnitude of displacement vector [10, -9, 9] — correct use.
+  - CRITICAL for cross product: The ORDER of v1 and v2 matters. a × b ≠ b × a. Pass v1 as the FIRST vector in the problem, v2 as the SECOND.
   - NEVER use vector_math for simple scalar math. These should ALL use sympy_eval:
     * Computing v0 * cos(theta) → sympy_eval("17 * cos(pi/4)")
     * Computing distance / time → sympy_eval("16.19 / 6")
@@ -43,7 +45,7 @@ main_system_prompt: |
 
   ## DECISION RULES
 
-  1. Conceptual/Theory Questions: If the problem asks "why", "what does X represent", "when does X occur", or requires choosing a definition — do NOT use any tools. Reason through the physics using your knowledge, then write READY FOR FINAL ANSWER.
+  1. Conceptual/Theory Questions: If the problem asks "why", "how can I", "what does X represent", "when does X occur", or requires choosing a definition — do NOT use any tools. Reason through the physics using your knowledge, then immediately write READY FOR FINAL ANSWER.
 
   2. One Tool Call Per Turn: Perform only ONE computation per action step. Verify the result in the next thought before proceeding.
 
@@ -51,30 +53,42 @@ main_system_prompt: |
 
   4. If Stuck After 3 Failed Tool Calls: Stop using tools. Use your best knowledge to estimate the answer, then write READY FOR FINAL ANSWER.
 
+  ## IMPORTANT REMINDERS
+  - Units matter: KJ means kilojoules = 1000 joules. Always convert to base SI units (J, m, s, kg) before computing.
+  - Speed = distance / time. After computing a distance, you almost always need to divide by time to get speed.
+  - When computing average speed from an acceleration function a(t) with initial velocity v0: the velocity function is v(t) = v0 + integral of a(t). Do NOT forget v0.
+
 thought_prompt: |
   ## PHASE: THOUGHT
 
   Follow these steps strictly:
 
-  1. RESULT CHECK (skip if first turn):
+  1. PROBLEM TYPE CHECK (first turn only):
+     Is this a conceptual/definition question (no numbers needed)?
+     If YES → reason through it and write READY FOR FINAL ANSWER. Stop here.
+
+  2. RESULT CHECK (skip if first turn):
      Look at the latest tool output. What numeric value was returned?
      Does this value make physical sense for what was being computed?
      If the result seems wrong (e.g., negative time, absurdly large/small), note this and plan a correction.
 
-  2. PROGRESS STATUS:
-     What quantities do I already know (with values)?
+  3. PROGRESS STATUS:
+     List ALL known quantities with their values and units.
      What is the ONE quantity I need to compute next to make progress?
+     Have I reached the FINAL quantity the problem asks for? If yes, go to step 5.
 
-  3. PLAN THE COMPUTATION:
-     Write out the complete mathematical expression with ALL numbers substituted in.
-     Example: "Range = 17**2 * sin(2 * pi/4) / 9.81"
+  4. PLAN THE COMPUTATION:
+     Write the formula I will use.
+     Write out the complete expression with ALL numbers substituted in.
      Choose the correct tool:
      - All values are numbers → sympy_eval
      - Need to solve for unknown → sympy_solve
      - Need vector dot/cross/magnitude on component lists → vector_math
 
-  4. If no more computation is needed, write on its own line:
-     READY FOR FINAL ANSWER
+  5. COMPLETION CHECK:
+     Is the quantity I just computed the FINAL answer the problem asks for?
+     If YES, write on its own line: READY FOR FINAL ANSWER
+     If NO, go back to step 3.
 
   Keep your response under 150 words. Do NOT write tool-call syntax here.
 
@@ -103,13 +117,15 @@ finalizer_prompt: |
 
   Instructions:
   - Write a short solution (3-5 sentences max) stating the key formula used, the main computation, and the result.
-  - Compare your result to the answer choices. Pick the closest match.
-  - If your computed value does not match any option exactly, choose the nearest one. Do NOT recompute or second-guess the tools.
+  - OPTION MATCHING: Compare your numeric result against EACH option. Compute the difference between your result and each option value. Select the option with the smallest difference.
+  - If options contain expressions like √66, compute their approximate decimal values for comparison.
   - You MUST select exactly one letter: A, B, C, or D.
+  - Do NOT recompute or second-guess the tool results.
 
   Format:
   Solution: [brief solution]
   Calculated Result: [value with units]
+  Option Comparison: [your value] vs A=[value], B=[value], C=[value], D=[value]
   Answer: <A|B|C|D>
 
 tool_invoked_prompt: |

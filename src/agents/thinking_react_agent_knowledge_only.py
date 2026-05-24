@@ -2,7 +2,8 @@ import json
 import logging as log
 from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (AIMessage, HumanMessage, SystemMessage,
+                                     ToolMessage)
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
@@ -43,13 +44,21 @@ class PhysicsReactAgent:
         graph.add_node("thought_skip_tool", self._thought_skip_tool)
 
         graph.set_entry_point("thought")
-        graph.add_edge("thought", "agent")
+        graph.add_conditional_edges(
+            "thought",
+            self._route_thought,
+            {"agent": "agent", "finalize": "finalize"},
+        )
         graph.add_conditional_edges(
             "agent",
             self._route_act,
             {"tools": "tools", "thought": "thought", "skip_tool": "thought_skip_tool", "end": "finalize"},
         )
-        graph.add_edge("thought_skip_tool", "agent")
+        graph.add_conditional_edges(
+            "thought_skip_tool",
+            self._route_thought,
+            {"agent": "agent", "finalize": "finalize"},
+        )
         graph.add_edge("tools", "thought")
         graph.add_edge("finalize", END)
 
@@ -112,6 +121,17 @@ class PhysicsReactAgent:
         log.info(f"[FINALIZE] LLM Response: {ai.content}")
         state["messages"] = [ai]
         return state
+
+    def _route_thought(self, state: State) -> str:
+        last = state["messages"][-1]
+        content = (last.content or "").strip()
+
+        if "READY FOR FINAL ANSWER" in content.upper():
+            log.info("[ROUTE_THOUGHT] Completion marker detected, going to finalize.")
+            return "finalize"
+
+        log.info("[ROUTE_THOUGHT] No completion marker, going to agent.")
+        return "agent"
 
     def _route_act(self, state: State) -> str:
         if state["react_iter"] >= agent_cfg["max_react_iters"]:

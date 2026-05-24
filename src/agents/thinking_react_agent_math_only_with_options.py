@@ -2,17 +2,19 @@ import json
 import logging as log
 from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (AIMessage, HumanMessage, SystemMessage,
+                                     ToolMessage)
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
-from src.agents.utils.tools import retriever_backend, sympy_eval, sympy_solve, vector_math
+from src.agents.utils.tools import (retriever_backend, sympy_eval, sympy_solve,
+                                    vector_math)
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 
-agent_cfg = load_yaml("config/thinking_react_agent_math_only.yaml")
+agent_cfg = load_yaml("config/thinking_react_agent_math_only_with_options.yaml")
 
 log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -20,7 +22,7 @@ log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 class State(TypedDict):
     messages: Annotated[List[AnyMessage], add_messages]
     problem: str
-    options: str
+    # options: str
     react_iter: int
 
 
@@ -114,7 +116,7 @@ class PhysicsReactAgent:
         return state
 
     def _finalize(self, state: State) -> State:
-        prompt_content = agent_cfg["finalizer_prompt"].format(problem=state["problem"], options=state["options"])
+        prompt_content = agent_cfg["finalizer_prompt"].format(problem=state["problem"])  # , options=state["options"])
         messages = state["messages"] + [HumanMessage(content=prompt_content)]
         ai = self.base_llm.invoke(messages)
         log.info(f"[FINALIZE] LLM Response: {ai.content}")
@@ -165,11 +167,10 @@ class PhysicsReactAgent:
         state: State = {
             "messages": [
                 SystemMessage(content=agent_cfg["main_system_prompt"]),
-                HumanMessage(content=f"# Problem\n{question}"),
-                # HumanMessage(content=f"# Problem\n{question}\n\n# Options\n{options}"),
+                HumanMessage(content=f"# Problem\n{problem}"),
             ],
-            "problem": question,
-            "options": options,
+            "problem": problem,
+            # "options": options,
             "react_iter": 0,
         }
         retriever_backend.clear_memory()

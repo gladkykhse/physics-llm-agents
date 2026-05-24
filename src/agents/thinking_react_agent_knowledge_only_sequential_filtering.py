@@ -83,19 +83,20 @@ class PhysicsReactAgent:
 
         # =======================================================
         # Uncomment for LLM-based filtering of retrieved sections
-        # prompt = HumanMessage(
-        #     content=agent_cfg["filter_knowledge_prompt"].format(problem=state["problem"], knowledge=knowledge_str))
-        # ai = self.base_llm.invoke([prompt])
-        #
-        # filtered_knowledge = "# Wikipedia Search Results\n\n" + ai.content
-        # log.info(f"[FILTER_KNOWLEDGE] - Output: {filtered_knowledge}")
+        prompt = HumanMessage(
+            content=agent_cfg["filter_knowledge_prompt"].format(problem=state["problem"], knowledge=knowledge_str)
+        )
+        ai = self.base_llm.invoke([prompt])
+
+        filtered_knowledge = "# Wikipedia Search Results\n\n" + ai.content
+        log.info(f"[FILTER_KNOWLEDGE] - Output: {filtered_knowledge}")
         # =======================================================
 
-        state["messages"] = [AIMessage(content=knowledge_str)]
+        # state["messages"] = [AIMessage(content=knowledge_str)]
 
         # =======================================================
         # Uncomment for LLM-based filtering of retrieved sections
-        # state["messages"] = [AIMessage(content=filtered_knowledge)]
+        state["messages"] = [AIMessage(content=filtered_knowledge)]
         # =======================================================
 
         return state
