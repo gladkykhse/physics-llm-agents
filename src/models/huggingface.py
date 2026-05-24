@@ -85,9 +85,17 @@ def _load_chatglm(model_id: str):
         model = AutoModel.from_pretrained(model_id, config=config, trust_remote_code=True)
 
     model.config.__dict__.pop("max_length", None)
-    # DynamicCache in transformers >= 5.0 reads num_hidden_layers; ChatGLM uses num_layers.
-    if not hasattr(model.config, "num_hidden_layers") and hasattr(model.config, "num_layers"):
-        model.config.num_hidden_layers = model.config.num_layers
+    # Backfill standard PretrainedConfig attributes that ChatGLMConfig doesn't define
+    # but that transformers >= 5.0 reads unconditionally from config.
+    _config_defaults = {
+        "num_hidden_layers": getattr(model.config, "num_layers", 28),  # DynamicCache
+        "use_cache": True,                                              # forward()
+        "output_attentions": False,                                     # forward()
+        "output_hidden_states": False,                                  # forward()
+    }
+    for attr, default in _config_defaults.items():
+        if not hasattr(model.config, attr):
+            setattr(model.config, attr, default)
     return tokenizer, model.half().cuda().eval()
 
 
