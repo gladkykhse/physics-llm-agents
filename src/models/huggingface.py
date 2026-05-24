@@ -85,6 +85,9 @@ def _load_chatglm(model_id: str):
         model = AutoModel.from_pretrained(model_id, config=config, trust_remote_code=True)
 
     model.config.__dict__.pop("max_length", None)
+    # DynamicCache in transformers >= 5.0 reads num_hidden_layers; ChatGLM uses num_layers.
+    if not hasattr(model.config, "num_hidden_layers") and hasattr(model.config, "num_layers"):
+        model.config.num_hidden_layers = model.config.num_layers
     return tokenizer, model.half().cuda().eval()
 
 
