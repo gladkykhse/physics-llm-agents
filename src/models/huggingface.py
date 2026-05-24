@@ -25,11 +25,17 @@ def _patch_chatglm_tokenizer() -> None:
         cls = getattr(mod, "ChatGLMTokenizer", None)
         if cls is None:
             continue
-        # get_vocab() called during __init__ before sp_model is set
+        # get_vocab() called during __init__ before sp_model is set;
+        # also self.vocab_size is a broken property in transformers 5.x MRO,
+        # so bypass it entirely and read sp_model directly.
         if callable(getattr(cls, "get_vocab", None)):
-            _orig = cls.get_vocab
-            def _safe_get_vocab(self, _o=_orig):
-                return {} if not hasattr(self, "sp_model") else _o(self)
+            def _safe_get_vocab(self):
+                if not hasattr(self, "sp_model"):
+                    return {}
+                n = self.sp_model.get_piece_size()
+                vocab = {self._convert_id_to_token(i): i for i in range(n)}
+                vocab.update(getattr(self, "added_tokens_encoder", {}))
+                return vocab
             cls.get_vocab = _safe_get_vocab
         # _pad() doesn't accept padding_side kwarg added in newer transformers
         if callable(getattr(cls, "_pad", None)):
