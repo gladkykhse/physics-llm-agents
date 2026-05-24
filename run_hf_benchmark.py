@@ -20,6 +20,7 @@ Run with:
 """
 import argparse
 import os
+import sys
 from datetime import datetime
 
 import datasets as hf_datasets
@@ -79,19 +80,47 @@ def _load_mmlu(save_dir: str, subset: str) -> pl.DataFrame:
 
 
 def _cot_system_prompt() -> str:
-    return (
-        "You are an expert in physics, solving multiple-choice exam problems.\n"
-        "Carefully analyze the question using relevant physics principles, formulas, and reasoning.\n"
-        "Explain your thought process step by step to show how you arrive at the solution.\n\n"
-        "After reasoning, provide your final choice in the format:\n"
-        "Answer: A\nAnswer: B\nAnswer: C\nor\nAnswer: D\n\n"
-        "Do not include anything else after the final answer."
-    )
+    return """You are an expert in physics, solving multiple-choice exam problems.
+    Carefully analyze the question using relevant physics principles, formulas, and reasoning.
+    Explain your thought process step by step to show how you arrive at the solution.
+
+    After reasoning, provide your final choice in the format:
+    Answer: A
+    Answer: B
+    Answer: C
+    or
+    Answer: D
+
+    Do not include anything else after the final answer."""
+
+
+def _standard_system_prompt() -> str:
+    return """Given a physics question and four options, please select the right answer.
+    Your answer should be a single letter A, B, C or D.
+    Please directly give the answer without any explanation."""
 
 
 # ---------------------------------------------------------------------------
 # Model loading
 # ---------------------------------------------------------------------------
+
+def _patch_chatglm_get_vocab() -> None:
+    """Patch ChatGLMTokenizer.get_vocab() called before SentencePiece is assigned."""
+    for name, mod in list(sys.modules.items()):
+        if "tokenization_chatglm" not in name:
+            continue
+        cls = getattr(mod, "ChatGLMTokenizer", None)
+        if cls is None:
+            continue
+        def _get_vocab(self):
+            sp = getattr(self, "tokenizer", None) or getattr(self, "sp_model", None)
+            if sp is None:
+                return {}
+            n = getattr(sp, "n_words", None) or getattr(sp, "get_piece_size", lambda: 0)()
+            return {self._convert_id_to_token(i): i for i in range(n)}
+        cls.get_vocab = _get_vocab
+        return
+
 
 def _is_chatglm(model_id: str) -> bool:
     config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
@@ -99,7 +128,11 @@ def _is_chatglm(model_id: str) -> bool:
 
 
 def _load_chatglm(model_id: str):
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    except AttributeError:
+        _patch_chatglm_get_vocab()
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModel.from_pretrained(
         model_id,
         trust_remote_code=True,
@@ -130,7 +163,7 @@ def run_completion(
     model_id: str,
     batch_size: int = 4,
     max_new_tokens: int = 2048,
-    temperature: float = 0.01,
+    temperature: float = 0.0,
 ) -> pl.DataFrame:
     chatglm = _is_chatglm(model_id)
     tokenizer, model = _load_chatglm(model_id) if chatglm else _load_standard(model_id)
@@ -185,6 +218,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("-m", "--model", required=True, help="HuggingFace model ID")
     parser.add_argument("-b", "--benchmark", default="scieval", choices=["scieval", "mmlu"])
+    parser.add_argument("-p", "--prompt", default="cot", choices=["cot", "standard"])
     parser.add_argument("-s", "--subset", default="college_physics", choices=MMLU_SUBSETS,
                         help="MMLU subset (ignored for scieval)")
     parser.add_argument("-t", "--topics", nargs="*", default=[], help="SciEval topic filter")
@@ -192,6 +226,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--benchmarks-dir", default="benchmarks")
     args = parser.parse_args()
+
+    prompt_fn = _cot_system_prompt if args.prompt == "cot" else _standard_system_prompt
 
     if args.benchmark == "scieval":
         df = _load_scieval(args.benchmarks_dir, args.topics, args.abilities)
@@ -205,7 +241,7 @@ if __name__ == "__main__":
 
     results_df = run_completion(
         questions=questions,
-        system_prompt=_cot_system_prompt(),
+        system_prompt=prompt_fn(),
         model_id=args.model,
         batch_size=args.batch_size,
     )
@@ -214,7 +250,7 @@ if __name__ == "__main__":
 
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = os.path.join(output_dir, f"{args.model.replace('/', '-')}_{timestamp}.parquet")
+    output_path = os.path.join(output_dir, f"{args.model.replace('/', '-')}_{prompt_fn.__name__[1:]}_{timestamp}.parquet")
     df.write_parquet(output_path)
     print(f"Results saved to {output_path}")
     print(f"Evaluate with: python run_evaluation.py --benchmark {args.benchmark} --filename {output_path}")
