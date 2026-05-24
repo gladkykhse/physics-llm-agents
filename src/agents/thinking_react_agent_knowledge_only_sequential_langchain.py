@@ -12,7 +12,7 @@ from src.agents.utils.langchain_community_wikipedia_multi_search import wikipedi
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 
-agent_cfg = load_yaml("config/thinking_react_agent_knowledge_only_sequential.yaml")
+agent_cfg = load_yaml("config/thinking_react_agent_knowledge_only_sequential_v2.yaml")
 
 log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 

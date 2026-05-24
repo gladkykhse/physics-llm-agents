@@ -1,7 +1,4 @@
-main_system_prompt: |
-  You are an expert physics problem-solving AI. Your task is to solve physics problems using retrieved knowledge when it is relevant and your own physics knowledge when it is not. Be direct and structured.
-
-initial_plan_prompt: |
+cot_retrieve_knowledge_prompt: |
   Your task is to analyze a physics problem and generate search queries to retrieve relevant theory and formulas from Wikipedia.
 
   Rules:
@@ -29,125 +26,46 @@ initial_plan_prompt: |
   2. query text here
   3. ...
 
-refine_plan_prompt: |
-  A previous search did not return all the information needed to solve the physics problem below. Generate new search queries to fill the remaining gaps.
-
-  Rules:
-  - NEVER include specific numbers, values, or functions from the problem in your queries.
-  - Do not query for basic math, algebra, or trigonometry. Focus only on physics concepts, laws, and formulas.
-  - Do NOT repeat any of the previous queries listed below. Use different terminology or more specific subtopics.
-  - Generate 1 to 3 specific, non-overlapping queries.
-
-  # Problem
-  {problem}
-
-  # Knowledge Already Retrieved
-  {accumulated_knowledge}
-
-  # Previous Queries (DO NOT repeat these)
-  {previous_queries}
-
-  # Assessment from Previous Round
-  {sufficiency_verdict}
-
-  # Output Format
-
-  ### 1. Gap Analysis
-  [What specific knowledge is still missing?]
-
-  ### 2. Query Reasoning
-  [Explain your new search terms. Verify they differ from all previous queries.]
-
-  ### Search Queries
-  1. query text here
-  2. query text here
-  3. ...
-
-generate_tool_call_prompt: |
-  Execute the `wikipedia_multi_search` tool using the "Search Queries" from the retrieval plan below.
-
-  # Retrieval Plan
-  {retrieval_plan}
-
+retrieve_knowledge_prompt: |
+  # Task
+  Execute the `wikipedia_multi_search` tool using the "Search Queries" you just identified.
+  
   # Instructions
   - Provide the queries as a single list of strings for the `queries` argument.
-  - Only perform the tool call. Do not summarize or explain.
-
+  - Do not summarize the analysis; only perform the tool call.
+  - Ensure the queries are technical, concise, and match your previous reasoning.
+  
+  # Tool Call Requirement
   Call `wikipedia_multi_search(queries=[...])` now.
 
 filter_knowledge_prompt: |
-  Read the knowledge document below. Write a short summary (under 500 words) of ONLY the information that is directly relevant to solving this physics problem. Ignore everything else.
-
-  Do not solve the problem. Do not add any information that is not in the document. If nothing in the document is relevant, write "No relevant information found."
+  Select and copy the parts of the knowledge document that are useful for solving this physics problem. Do not solve the problem. Do not add any information that is not in the document.
 
   Problem:
   {problem}
 
   Knowledge document:
-  {raw_retrieved}
+  {knowledge}
 
-  Write your summary as a short paragraph for each category. Do not use bullet-point lists.
+  Output:
 
-  Relevant principles and facts:
-  [Write a short paragraph summarizing only relevant principles from the document.]
+  ## Relevant principles and facts
+  - Copy exact statements from the document
 
-  Relevant formulas:
-  [Write only the formulas that apply to this specific problem.]
+  ## Relevant formulas
+  - Copy exact formulas from the document
 
-  Relevant conditions:
-  [Write a short paragraph about relevant conditions or assumptions, if any.]
+  ## Relevant conditions and assumptions
+  - Copy exact conditions or special cases from the document
 
-sufficiency_check_prompt: |
-  You are given a physics problem and the knowledge retrieved so far. Determine if this knowledge is enough to solve the problem.
-
-  # Problem
-  {problem}
-
-  # Retrieved Knowledge
-  {accumulated_knowledge}
-
-  # Previous Queries Tried
-  {previous_queries}
-
-  # Task
-  Try to identify the specific principle, law, or formula from the retrieved knowledge that directly answers or solves this problem. Quote it exactly.
-
-  If you can quote the relevant principle or formula: write STATUS: SUFFICIENT
-  If you cannot find it in the retrieved knowledge: write STATUS: INSUFFICIENT and explain in one sentence what is missing.
-
-  Keep your response under 80 words.
-
-consolidate_knowledge_prompt: |
-  Merge the knowledge below into a single non-redundant summary for solving this physics problem. Write short paragraphs, not bullet-point lists.
-
-  Rules:
-  - Use only information from the source material. Do not add your own knowledge.
-  - Remove duplicate information. Keep the more complete version.
-  - Remove anything not relevant to the problem.
-  - Do NOT solve the problem or suggest an answer.
-
-  # Problem
-  {problem}
-
-  # All Retrieved Knowledge
-  {accumulated_knowledge}
-
-  Write your output as:
-
-  Relevant principles and facts:
-  [paragraph]
-
-  Relevant formulas:
-  [formulas only]
-
-  Relevant conditions:
-  [paragraph, if any]
+main_system_prompt: |
+  You are an expert physics problem-solving AI. Be direct and structured.
 
 solve_prompt: |
-  You are a physics expert. Think step by step to solve the problem below. Use the Wikipedia Search Results above if they directly address the question. If they do not contain the specific information needed, ignore them and rely on your own physics knowledge.
+  Think step by step to solve the problem below. Base your reasoning on the Wikipedia Search Results provided above.
 
   **Step 1 — Identify:** List the key given information. If numerical, convert to SI units.
-  **Step 2 — Reasoning:** State the relevant physical principles. If the problem requires math, show the full calculation step by step. If the problem is theoretical, explain the logical reasoning.
+  **Step 2 — Reasoning:** State the relevant physical principles, citing the retrieved content where applicable. If the problem requires math, show the full calculation step by step. If the problem is theoretical, explain the logical reasoning.
   **Step 3 — Verify:** Write out every option A, B, C, D with its value. Compare each one to your result. State which one matches or is closest.
   **Step 4 — Answer:** On the very last line, write your answer in this exact format and nothing else:
   Answer: X
@@ -158,5 +76,3 @@ solve_prompt: |
   ---
   **Problem:**
   {problem}
-
-max_retrieval_iters: 3

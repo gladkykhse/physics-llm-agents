@@ -8,6 +8,7 @@
 #   "polars>=1.0",
 #   "datasets>=2.18",
 #   "huggingface_hub>=0.20",
+#   "protobuf",
 # ]
 # ///
 """Standalone HuggingFace benchmark runner for ChatGLM3-based and MoE models.
@@ -193,11 +194,14 @@ def _generate_on_gpu(
         batch = questions[i : i + batch_size]
         prompts = []
         for q in batch:
-            messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": q}]
             if getattr(tokenizer, "chat_template", None) is not None:
+                messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": q}]
                 prompts.append(tokenizer.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True,
                 ))
+            elif "scidfm" in model_id.lower():
+                # SciDFM-MoE uses <|user|>:<text><|assistant|>: template
+                prompts.append(f"<|user|>:{system_prompt}\n{q}<|assistant|>:")
             else:
                 prompts.append(f"System: {system_prompt}\nUser: {q}\nAssistant:")
 
@@ -214,8 +218,8 @@ def _generate_on_gpu(
         input_len = inputs["input_ids"].shape[1]
         for seq in output_ids:
             answer = tokenizer.decode(seq[input_len:], skip_special_tokens=True)
-            print(f"[gpu{gpu}] [{i + len(results) + 1}/{len(questions)}] len={len(answer)}", flush=True)
             results.append(answer)
+            print(f"[gpu{gpu}] [{len(results)}/{len(questions)}] len={len(answer)}", flush=True)
 
     result_queue.put((gpu, results))
 
