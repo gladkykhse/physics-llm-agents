@@ -1,34 +1,56 @@
+"""HuggingFace local model inference backend.
+
+ChatGLM3-based models (e.g. SciGLM-6B) ship remote code that is incompatible
+with transformers >= 4.44. Three known breakages are patched here at runtime
+by catching the first failure, fixing the loaded class in sys.modules, and
+retrying — model weights are already cached so the retry is cheap.
+"""
 import sys
-from typing import Union, List
+from typing import List, Union
 
 import polars as pl
 import torch
 from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 
+# ---------------------------------------------------------------------------
+# ChatGLM3 compatibility patches (transformers >= 4.44 API changes)
+# ---------------------------------------------------------------------------
+
 def _patch_chatglm_tokenizer() -> None:
-    """ChatGLM3 tokenizer calls get_vocab() before sp_model is initialised
-    (Python 3.13 + transformers >=4.44 incompatibility). The class is already
-    in sys.modules after the failed import — patch it there and retry."""
+    """get_vocab() is called during __init__ before sp_model is set."""
     for name, mod in sys.modules.items():
         if "tokenization_chatglm" not in name:
             continue
         cls = getattr(mod, "ChatGLMTokenizer", None)
-        if cls is not None and callable(getattr(cls, "get_vocab", None)):
-            _orig = cls.get_vocab
+        if cls is None or not callable(getattr(cls, "get_vocab", None)):
+            continue
+        _orig = cls.get_vocab
+        def _safe(self, _orig=_orig):
+            return {} if not hasattr(self, "sp_model") else _orig(self)
+        cls.get_vocab = _safe
+        return
 
-            def _safe_get_vocab(self, _orig=_orig):
-                if not hasattr(self, "sp_model"):
-                    return {}
-                return _orig(self)
 
-            cls.get_vocab = _safe_get_vocab
-            return
+def _patch_chatglm_model() -> None:
+    """all_tied_weights_keys renamed from _tied_weights_keys."""
+    for name, mod in sys.modules.items():
+        if "modeling_chatglm" not in name:
+            continue
+        for attr in dir(mod):
+            cls = getattr(mod, attr, None)
+            if isinstance(cls, type) and not hasattr(cls, "all_tied_weights_keys"):
+                cls.all_tied_weights_keys = {}
+        return
 
+
+# ---------------------------------------------------------------------------
+# Loaders
+# ---------------------------------------------------------------------------
 
 def _load_chatglm(model: str):
-    """Load a ChatGLM3-based model the way its own docs prescribe:
-    AutoModel + .half().cuda() — avoids every transformers >=4.44 breakage."""
+    """Load ChatGLM3-based models via AutoModel + .half().cuda(), exactly as
+    the model documentation prescribes, to avoid device_map incompatibilities."""
     try:
         tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
     except AttributeError as e:
@@ -38,11 +60,18 @@ def _load_chatglm(model: str):
         tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
 
     config = AutoConfig.from_pretrained(model, trust_remote_code=True)
-    # config.max_length was removed in transformers >=4.44; ChatGLM still uses it
     if not hasattr(config, "max_length") and hasattr(config, "seq_length"):
-        config.max_length = config.seq_length
-    hf_model = AutoModel.from_pretrained(model, config=config, trust_remote_code=True).half().cuda()
-    return tokenizer, hf_model.eval()
+        config.max_length = config.seq_length  # removed in transformers >= 4.44
+
+    try:
+        hf_model = AutoModel.from_pretrained(model, config=config, trust_remote_code=True)
+    except AttributeError as e:
+        if "all_tied_weights_keys" not in str(e):
+            raise
+        _patch_chatglm_model()
+        hf_model = AutoModel.from_pretrained(model, config=config, trust_remote_code=True)
+
+    return tokenizer, hf_model.half().cuda().eval()
 
 
 def _load_standard(model: str):
@@ -53,6 +82,10 @@ def _load_standard(model: str):
     return tokenizer, hf_model.eval()
 
 
+# ---------------------------------------------------------------------------
+# Prompt builder (for non-ChatGLM models)
+# ---------------------------------------------------------------------------
+
 def _build_prompt(tokenizer: AutoTokenizer, request: str, system_prompt: str) -> str:
     messages = []
     if system_prompt:
@@ -62,11 +95,14 @@ def _build_prompt(tokenizer: AutoTokenizer, request: str, system_prompt: str) ->
     if getattr(tokenizer, "chat_template", None) is not None:
         return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-    # Fallback for models without a chat template
     parts = [f"{m['role'].capitalize()}: {m['content']}" for m in messages]
     parts.append("Assistant:")
     return "\n".join(parts)
 
+
+# ---------------------------------------------------------------------------
+# Public interface
+# ---------------------------------------------------------------------------
 
 def run_completion(
     all_requests: List[str],
@@ -90,10 +126,8 @@ def run_completion(
     results: list[str] = []
 
     if chatglm:
-        # ChatGLM's .chat() handles tokenisation and generation internally
         for request, sp in zip(all_requests, sys_prompts):
-            kwargs: dict = {"history": [], "max_length": max_new_tokens,
-                            "temperature": temperature}
+            kwargs: dict = {"history": [], "max_length": max_new_tokens, "temperature": temperature}
             if sp:
                 kwargs["system"] = sp
             with torch.no_grad():
