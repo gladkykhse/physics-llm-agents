@@ -15,9 +15,11 @@ def _load_tokenizer(model: str) -> AutoTokenizer:
         # ChatGLM3 tokenizer bug: get_vocab() is called during __init__ before
         # sp_model is set (Python 3.13 + transformers >=4.44 incompatibility).
         # The class is now in sys.modules — patch get_vocab and retry.
-        for mod in sys.modules.values():
+        for name, mod in sys.modules.items():
+            if "tokenization_chatglm" not in name:
+                continue
             cls = getattr(mod, "ChatGLMTokenizer", None)
-            if cls is not None:
+            if cls is not None and callable(getattr(cls, "get_vocab", None)):
                 _orig = cls.get_vocab
                 def _safe_get_vocab(self, _orig=_orig):
                     if not hasattr(self, "sp_model"):
