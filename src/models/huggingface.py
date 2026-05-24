@@ -51,7 +51,7 @@ def _patch_chatglm() -> None:
             for attr in dir(mod):
                 obj = getattr(mod, attr, None)
                 if isinstance(obj, type) and not hasattr(obj, "all_tied_weights_keys"):
-                    obj.all_tied_weights_keys = []
+                    obj.all_tied_weights_keys = {}
 
 
 def _load_chatglm(model_id: str):
