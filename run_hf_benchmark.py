@@ -9,6 +9,7 @@
 #   "datasets>=2.18",
 #   "huggingface_hub>=0.20",
 #   "protobuf",
+#   "flash-attn",
 # ]
 # ///
 """Standalone HuggingFace benchmark runner for ChatGLM3-based and MoE models.
@@ -156,11 +157,12 @@ def _load_chatglm(model_id: str, gpu: int):
 
 def _load_standard(model_id: str, gpu: int):
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-    kwargs = dict(trust_remote_code=True, torch_dtype=torch.float16, device_map=f"cuda:{gpu}")
-    try:
-        model = AutoModelForCausalLM.from_pretrained(model_id, attn_implementation="flash_attention_2", **kwargs)
-    except (ValueError, ImportError):
-        model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        trust_remote_code=True,
+        torch_dtype=torch.float16,
+        device_map=f"cuda:{gpu}",
+    )
     return tokenizer, model.eval()
 
 
