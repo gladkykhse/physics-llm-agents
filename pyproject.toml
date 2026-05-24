@@ -28,7 +28,7 @@ dependencies = [
     "sentence-transformers>=5.2.2",
     "sentencepiece>=0.2.1",
     "sympy>=1.14.0",
-    "transformers>=4.40.0",
+    "transformers>=4.45.0",
     "wikipedia>=1.4.0",
 ]
 
