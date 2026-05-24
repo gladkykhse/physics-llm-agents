@@ -23,7 +23,3 @@ vllm_models:
   - Qwen/Qwen2.5-7B
   - microsoft/Phi-4-mini-instruct
   - Qwen/Qwen3-8B
-
-huggingface_models:
-  - zd21/SciGLM-6B
-  - OpenDFM/SciDFM-MoE-A5.6B-v1.0

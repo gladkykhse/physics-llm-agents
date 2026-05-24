@@ -8,7 +8,7 @@ from typing import Callable
 import polars as pl
 
 from src.benchmarks import mmlu, scieval
-from src.models import huggingface, langgraph, ollama, openai_api, vllm
+from src.models import langgraph, ollama, openai_api, vllm
 from src.utils.helpers import load_yaml
 
 BENCHMARK_CFG = load_yaml("config/benchmark.yaml")
@@ -47,13 +47,6 @@ async def run_mmlu(
             )
         elif model in BENCHMARK_CFG["vllm_models"]:
             evaluation_df = await vllm.run_completion(
-                all_requests=questions,
-                system_prompt=prompt_fn(),
-                model=model,
-                batch_size=4,
-            )
-        elif model in BENCHMARK_CFG["huggingface_models"]:
-            evaluation_df = huggingface.run_completion(
                 all_requests=questions,
                 system_prompt=prompt_fn(),
                 model=model,
@@ -120,13 +113,6 @@ async def run_scieval(
                 model=model,
                 batch_size=4,
             )
-        elif model in BENCHMARK_CFG["huggingface_models"]:
-            evaluation_df = huggingface.run_completion(
-                all_requests=questions,
-                system_prompt=prompt_fn(),
-                model=model,
-                batch_size=4,
-            )
         else:
             raise ValueError(f"Model '{model}' not found in BENCHMARK_CFG.")
 
@@ -157,7 +143,6 @@ if __name__ == "__main__":
         choices=BENCHMARK_CFG["openai_models"]
         + BENCHMARK_CFG["ollama_models"]
         + BENCHMARK_CFG["vllm_models"]
-        + BENCHMARK_CFG["huggingface_models"]
         + BENCHMARK_CFG["agents"],
         help="The name of the benchmark you want to run",
     )
