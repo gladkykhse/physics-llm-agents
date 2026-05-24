@@ -84,6 +84,10 @@ def _load_chatglm(model: str):
         _patch_chatglm_model()
         hf_model = AutoModel.from_pretrained(model, config=config, trust_remote_code=True)
 
+    # max_length was needed for model.__init__ (self.max_sequence_length = config.max_length)
+    # but transformers >= 4.44 raises if it finds generation keys in model.config at generate time
+    hf_model.config.__dict__.pop("max_length", None)
+
     return tokenizer, hf_model.half().cuda().eval()
 
 
