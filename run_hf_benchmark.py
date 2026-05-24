@@ -20,7 +20,6 @@ Run with:
 """
 import argparse
 import os
-import sys
 from datetime import datetime
 
 import datasets as hf_datasets
@@ -104,35 +103,28 @@ def _standard_system_prompt() -> str:
 # Model loading
 # ---------------------------------------------------------------------------
 
-def _patch_chatglm_get_vocab() -> None:
-    """Patch ChatGLMTokenizer.get_vocab() called before SentencePiece is assigned."""
-    for name, mod in list(sys.modules.items()):
-        if "tokenization_chatglm" not in name:
-            continue
-        cls = getattr(mod, "ChatGLMTokenizer", None)
-        if cls is None:
-            continue
-        def _get_vocab(self):
-            sp = getattr(self, "tokenizer", None) or getattr(self, "sp_model", None)
-            if sp is None:
-                return {}
-            n = getattr(sp, "n_words", None) or getattr(sp, "get_piece_size", lambda: 0)()
-            return {self._convert_id_to_token(i): i for i in range(n)}
-        cls.get_vocab = _get_vocab
-        return
-
-
 def _is_chatglm(model_id: str) -> bool:
     config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
     return "chatglm" in getattr(config, "model_type", "").lower()
 
 
 def _load_chatglm(model_id: str):
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-    except AttributeError:
-        _patch_chatglm_get_vocab()
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
+    # Load the tokenizer class into sys.modules WITHOUT instantiating it, then
+    # patch get_vocab before from_pretrained calls cls(*args). This is necessary
+    # because get_vocab is called from super().__init__() before the SentencePiece
+    # tokenizer attribute is set on the instance.
+    cls = get_class_from_dynamic_module("tokenization_chatglm.ChatGLMTokenizer", model_id)
+    def _get_vocab(self):
+        sp = getattr(self, "tokenizer", None) or getattr(self, "sp_model", None)
+        if sp is None:
+            return {}
+        n = getattr(sp, "n_words", None) or getattr(sp, "get_piece_size", lambda: 0)()
+        return {self._convert_id_to_token(i): i for i in range(n)}
+    cls.get_vocab = _get_vocab
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModel.from_pretrained(
         model_id,
         trust_remote_code=True,
