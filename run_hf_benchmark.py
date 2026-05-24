@@ -19,7 +19,10 @@ Run with:
     uv run --python 3.11 run_hf_benchmark.py -m OpenDFM/SciDFM-MoE-A5.6B-v1.0 -b scieval
 """
 import argparse
+import glob
+import importlib.util
 import os
+import sys
 from datetime import datetime
 
 import datasets as hf_datasets
@@ -103,27 +106,42 @@ def _standard_system_prompt() -> str:
 # Model loading
 # ---------------------------------------------------------------------------
 
+def _patch_chatglm_source() -> None:
+    """Patch tokenization_chatglm.py in the HuggingFace cache (idempotent).
+
+    get_vocab() is called by PreTrainedTokenizer._add_tokens() inside
+    super().__init__() before self.tokenizer (the SentencePiece model) is
+    assigned. Patching at the Python class level races with the import;
+    editing the source file is the only approach that reliably wins.
+    """
+    broken = "vocab = {self._convert_id_to_token(i): i for i in range(self.vocab_size)}"
+    fixed  = ('if not hasattr(self, "tokenizer") or self.tokenizer is None:\n'
+              '            return {}\n'
+              '        vocab = {self._convert_id_to_token(i): i for i in range(self.vocab_size)}')
+
+    pattern = os.path.expanduser(
+        "~/.cache/huggingface/modules/transformers_modules/**/tokenization_chatglm.py"
+    )
+    for path in glob.glob(pattern, recursive=True):
+        src = open(path).read()
+        if broken not in src:
+            continue  # already patched or different layout
+        open(path, "w").write(src.replace(broken, fixed, 1))
+        pyc = importlib.util.cache_from_source(path)
+        if os.path.exists(pyc):
+            os.remove(pyc)
+        # Evict from sys.modules so the next import reads the patched file
+        for key in [k for k in sys.modules if "tokenization_chatglm" in k]:
+            del sys.modules[key]
+
+
 def _is_chatglm(model_id: str) -> bool:
     config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
     return "chatglm" in getattr(config, "model_type", "").lower()
 
 
 def _load_chatglm(model_id: str):
-    from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-    # Load the tokenizer class into sys.modules WITHOUT instantiating it, then
-    # patch get_vocab before from_pretrained calls cls(*args). This is necessary
-    # because get_vocab is called from super().__init__() before the SentencePiece
-    # tokenizer attribute is set on the instance.
-    cls = get_class_from_dynamic_module("tokenization_chatglm.ChatGLMTokenizer", model_id)
-    def _get_vocab(self):
-        sp = getattr(self, "tokenizer", None) or getattr(self, "sp_model", None)
-        if sp is None:
-            return {}
-        n = getattr(sp, "n_words", None) or getattr(sp, "get_piece_size", lambda: 0)()
-        return {self._convert_id_to_token(i): i for i in range(n)}
-    cls.get_vocab = _get_vocab
-
+    _patch_chatglm_source()
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModel.from_pretrained(
         model_id,
