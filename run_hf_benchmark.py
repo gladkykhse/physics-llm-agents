@@ -140,43 +140,48 @@ def _is_chatglm(model_id: str) -> bool:
     return "chatglm" in getattr(config, "model_type", "").lower()
 
 
-def _load_chatglm(model_id: str):
+def _load_chatglm(model_id: str, gpu: int):
     _patch_chatglm_source()
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     model = AutoModel.from_pretrained(
         model_id,
         trust_remote_code=True,
         torch_dtype=torch.float16,
-        device_map="auto",
+        device_map=f"cuda:{gpu}",
+        attn_implementation="eager",
     ).eval()
     return tokenizer, model
 
 
-def _load_standard(model_id: str):
+def _load_standard(model_id: str, gpu: int):
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        trust_remote_code=True,
-        torch_dtype=torch.float16,
-        device_map="auto",
-    ).eval()
-    return tokenizer, model
+    kwargs = dict(trust_remote_code=True, torch_dtype=torch.float16, device_map=f"cuda:{gpu}")
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_id, attn_implementation="flash_attention_2", **kwargs)
+    except (ValueError, ImportError):
+        model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
+    return tokenizer, model.eval()
 
 
 # ---------------------------------------------------------------------------
-# Inference
+# Inference — single-GPU worker
 # ---------------------------------------------------------------------------
 
-def run_completion(
+def _generate_on_gpu(
+    gpu: int,
     questions: list[str],
     system_prompt: str,
     model_id: str,
-    batch_size: int = 4,
-    max_new_tokens: int = 2048,
-    temperature: float = 0.0,
-) -> pl.DataFrame:
+    batch_size: int,
+    max_new_tokens: int,
+    temperature: float,
+    result_queue,
+) -> None:
+    """Worker: load model on `gpu`, generate, push results to queue."""
     chatglm = _is_chatglm(model_id)
-    tokenizer, model = _load_chatglm(model_id) if chatglm else _load_standard(model_id)
+    tokenizer, model = (
+        _load_chatglm(model_id, gpu) if chatglm else _load_standard(model_id, gpu)
+    )
 
     tokenizer.padding_side = "left"
     if tokenizer.pad_token_id is None:
@@ -194,9 +199,7 @@ def run_completion(
                     messages, tokenize=False, add_generation_prompt=True,
                 ))
             else:
-                prompts.append(
-                    f"System: {system_prompt}\nUser: {q}\nAssistant:"
-                )
+                prompts.append(f"System: {system_prompt}\nUser: {q}\nAssistant:")
 
         inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
         with torch.no_grad():
@@ -211,8 +214,60 @@ def run_completion(
         input_len = inputs["input_ids"].shape[1]
         for seq in output_ids:
             answer = tokenizer.decode(seq[input_len:], skip_special_tokens=True)
-            print(f"[{i + len(results) + 1}/{len(questions)}] Answer length = {len(answer)}")
+            print(f"[gpu{gpu}] [{i + len(results) + 1}/{len(questions)}] len={len(answer)}", flush=True)
             results.append(answer)
+
+    result_queue.put((gpu, results))
+
+
+def run_completion(
+    questions: list[str],
+    system_prompt: str,
+    model_id: str,
+    batch_size: int = 32,
+    max_new_tokens: int = 2048,
+    temperature: float = 0.0,
+    num_gpus: int | None = None,
+) -> pl.DataFrame:
+    import torch.multiprocessing as mp
+
+    available = torch.cuda.device_count()
+    n = min(num_gpus or available, available, len(questions))
+    if n <= 1:
+        # single-GPU fallback
+        q: mp.Queue = mp.Queue()
+        _generate_on_gpu(0, questions, system_prompt, model_id, batch_size, max_new_tokens, temperature, q)
+        _, results = q.get()
+        return pl.DataFrame({"question": questions, "answer_ai": results})
+
+    # Split questions across GPUs
+    chunks = [questions[i::n] for i in range(n)]
+
+    ctx = mp.get_context("spawn")
+    queue = ctx.Queue()
+    procs = [
+        ctx.Process(
+            target=_generate_on_gpu,
+            args=(gpu, chunks[gpu], system_prompt, model_id, batch_size, max_new_tokens, temperature, queue),
+        )
+        for gpu in range(n)
+    ]
+    for p in procs:
+        p.start()
+
+    # Collect results keyed by gpu rank, then reassemble in original order
+    per_gpu: dict[int, list[str]] = {}
+    for _ in range(n):
+        gpu, res = queue.get()
+        per_gpu[gpu] = res
+    for p in procs:
+        p.join()
+
+    # Interleave: chunk[gpu][j] came from questions[j*n + gpu]
+    results = [""] * len(questions)
+    for gpu in range(n):
+        for j, ans in enumerate(per_gpu[gpu]):
+            results[j * n + gpu] = ans
 
     return pl.DataFrame({"question": questions, "answer_ai": results})
 
@@ -233,7 +288,8 @@ if __name__ == "__main__":
                         help="MMLU subset (ignored for scieval)")
     parser.add_argument("-t", "--topics", nargs="*", default=[], help="SciEval topic filter")
     parser.add_argument("-a", "--abilities", nargs="*", default=[], help="SciEval ability filter")
-    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--num-gpus", type=int, default=None, help="GPUs to use (default: all available)")
     parser.add_argument("--benchmarks-dir", default="benchmarks")
     args = parser.parse_args()
 
@@ -254,6 +310,7 @@ if __name__ == "__main__":
         system_prompt=prompt_fn(),
         model_id=args.model,
         batch_size=args.batch_size,
+        num_gpus=args.num_gpus,
     )
 
     df = df.join(results_df, on="question")
