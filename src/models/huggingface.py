@@ -1,8 +1,31 @@
+import sys
 from typing import Union, List
 
 import polars as pl
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+
+def _load_tokenizer(model: str) -> AutoTokenizer:
+    try:
+        return AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+    except AttributeError as e:
+        if "vocab_size" not in str(e):
+            raise
+        # ChatGLM3 tokenizer bug: get_vocab() is called during __init__ before
+        # sp_model is set (Python 3.13 + transformers >=4.44 incompatibility).
+        # The class is now in sys.modules — patch get_vocab and retry.
+        for mod in sys.modules.values():
+            cls = getattr(mod, "ChatGLMTokenizer", None)
+            if cls is not None:
+                _orig = cls.get_vocab
+                def _safe_get_vocab(self, _orig=_orig):
+                    if not hasattr(self, "sp_model"):
+                        return {}
+                    return _orig(self)
+                cls.get_vocab = _safe_get_vocab
+                break
+        return AutoTokenizer.from_pretrained(model, trust_remote_code=True)
 
 
 def _build_prompt(tokenizer: AutoTokenizer, request: str, system_prompt: str) -> str:
@@ -37,7 +60,7 @@ def run_completion(
     else:
         sys_prompts = [system_prompt] * len(all_requests)
 
-    tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+    tokenizer = _load_tokenizer(model)
     hf_model = AutoModelForCausalLM.from_pretrained(
         model,
         trust_remote_code=True,
