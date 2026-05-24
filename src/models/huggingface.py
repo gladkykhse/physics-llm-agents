@@ -11,7 +11,7 @@ from typing import List, Union
 
 import polars as pl
 import torch
-from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, GenerationMixin
 
 
 def _patch_chatglm() -> None:
@@ -46,12 +46,18 @@ def _patch_chatglm() -> None:
             cls._pad = _pad
 
         elif "modeling_chatglm" in name:
-            # (3) all_tied_weights_keys was renamed from _tied_weights_keys in
-            #     transformers >= 4.44.
             for attr in dir(mod):
                 obj = getattr(mod, attr, None)
-                if isinstance(obj, type) and not hasattr(obj, "all_tied_weights_keys"):
+                if not isinstance(obj, type):
+                    continue
+                # (3) all_tied_weights_keys was renamed from _tied_weights_keys in
+                #     transformers >= 4.44. Must be a dict (not list) as .keys() is called.
+                if not hasattr(obj, "all_tied_weights_keys"):
                     obj.all_tied_weights_keys = {}
+                # (4) transformers >= 5.0: PreTrainedModel no longer inherits GenerationMixin.
+                #     ChatGLM's remote code never directly subclassed it, so generate() is gone.
+                if hasattr(obj, "prepare_inputs_for_generation") and not issubclass(obj, GenerationMixin):
+                    obj.__bases__ = obj.__bases__ + (GenerationMixin,)
 
 
 def _load_chatglm(model_id: str):
