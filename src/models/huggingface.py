@@ -42,7 +42,10 @@ def _load_chatglm(model: str):
         _patch_chatglm_tokenizer()
         tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
 
-    hf_model = AutoModel.from_pretrained(model, trust_remote_code=True).half().cuda()
+    config = AutoConfig.from_pretrained(model, trust_remote_code=True)
+    if not hasattr(config, "max_length") and hasattr(config, "seq_length"):
+        config.max_length = config.seq_length
+    hf_model = AutoModel.from_pretrained(model, config=config, trust_remote_code=True).half().cuda()
     return tokenizer, hf_model.eval()
 
 
