@@ -11,6 +11,9 @@
 #   "protobuf",
 #   "flash-attn",
 # ]
+#
+# [tool.uv]
+# extra-build-dependencies = {"flash-attn" = ["torch", "packaging", "ninja"]}
 # ///
 """Standalone HuggingFace benchmark runner for ChatGLM3-based and MoE models.
 
