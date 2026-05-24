@@ -3,7 +3,7 @@ from typing import Union, List
 
 import polars as pl
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 
 def _load_tokenizer(model: str) -> AutoTokenizer:
@@ -63,10 +63,17 @@ def run_completion(
         sys_prompts = [system_prompt] * len(all_requests)
 
     tokenizer = _load_tokenizer(model)
+
+    config = AutoConfig.from_pretrained(model, trust_remote_code=True)
+    # ChatGLM3 compat: config.max_length was removed in newer transformers
+    if not hasattr(config, "max_length") and hasattr(config, "seq_length"):
+        config.max_length = config.seq_length
+
     hf_model = AutoModelForCausalLM.from_pretrained(
         model,
+        config=config,
         trust_remote_code=True,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         device_map="auto",
     )
     hf_model.eval()
