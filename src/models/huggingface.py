@@ -18,17 +18,28 @@ from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokeni
 # ---------------------------------------------------------------------------
 
 def _patch_chatglm_tokenizer() -> None:
-    """get_vocab() is called during __init__ before sp_model is set."""
+    """Apply all known ChatGLMTokenizer patches for transformers >= 4.44."""
     for name, mod in sys.modules.items():
         if "tokenization_chatglm" not in name:
             continue
         cls = getattr(mod, "ChatGLMTokenizer", None)
-        if cls is None or not callable(getattr(cls, "get_vocab", None)):
+        if cls is None:
             continue
-        _orig = cls.get_vocab
-        def _safe(self, _orig=_orig):
-            return {} if not hasattr(self, "sp_model") else _orig(self)
-        cls.get_vocab = _safe
+
+        # get_vocab() is called during __init__ before sp_model is set
+        if callable(getattr(cls, "get_vocab", None)):
+            _orig_gv = cls.get_vocab
+            def _safe_get_vocab(self, _o=_orig_gv):
+                return {} if not hasattr(self, "sp_model") else _o(self)
+            cls.get_vocab = _safe_get_vocab
+
+        # transformers >= 4.44 passes padding_side kwarg that _pad() doesn't accept
+        if callable(getattr(cls, "_pad", None)):
+            _orig_pad = cls._pad
+            def _safe_pad(self, *args, padding_side=None, _o=_orig_pad, **kwargs):
+                return _o(self, *args, **kwargs)
+            cls._pad = _safe_pad
+
         return
 
 
@@ -58,6 +69,8 @@ def _load_chatglm(model: str):
             raise
         _patch_chatglm_tokenizer()
         tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+    # Always apply all tokenizer patches once the class is in sys.modules
+    _patch_chatglm_tokenizer()
 
     config = AutoConfig.from_pretrained(model, trust_remote_code=True)
     if not hasattr(config, "max_length") and hasattr(config, "seq_length"):
