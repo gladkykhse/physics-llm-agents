@@ -26,11 +26,6 @@ def _patch_chatglm_tokenizer() -> None:
             return
 
 
-def _is_chatglm(model: str) -> bool:
-    config = AutoConfig.from_pretrained(model, trust_remote_code=True)
-    return "chatglm" in getattr(config, "model_type", "").lower()
-
-
 def _load_chatglm(model: str):
     """Load a ChatGLM3-based model the way its own docs prescribe:
     AutoModel + .half().cuda() — avoids every transformers >=4.44 breakage."""
@@ -43,6 +38,7 @@ def _load_chatglm(model: str):
         tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
 
     config = AutoConfig.from_pretrained(model, trust_remote_code=True)
+    # config.max_length was removed in transformers >=4.44; ChatGLM still uses it
     if not hasattr(config, "max_length") and hasattr(config, "seq_length"):
         config.max_length = config.seq_length
     hf_model = AutoModel.from_pretrained(model, config=config, trust_remote_code=True).half().cuda()
@@ -87,7 +83,8 @@ def run_completion(
     else:
         sys_prompts = [system_prompt] * len(all_requests)
 
-    chatglm = _is_chatglm(model)
+    config = AutoConfig.from_pretrained(model, trust_remote_code=True)
+    chatglm = "chatglm" in getattr(config, "model_type", "").lower()
     tokenizer, hf_model = _load_chatglm(model) if chatglm else _load_standard(model)
 
     results: list[str] = []
