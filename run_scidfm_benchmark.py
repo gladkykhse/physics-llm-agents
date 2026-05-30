@@ -10,7 +10,12 @@
 #   "polars>=1.0",
 #   "datasets>=2.18.0",
 #   "huggingface_hub>=0.21.0",
+#   "flash-attn>=2.5.0",
+#   "packaging",
 # ]
+#
+# [tool.uv.extra-build-dependencies]
+# flash-attn = ["torch", "packaging", "setuptools", "wheel"]
 # ///
 """Benchmark runner for OpenDFM/SciDFM-MoE-A5.6B-v1.0 on 3x A100-80GB GPUs (0-2).
 
