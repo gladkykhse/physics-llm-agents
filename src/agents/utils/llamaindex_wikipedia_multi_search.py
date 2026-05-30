@@ -19,6 +19,7 @@ _wikipedia = WikipediaToolSpec()
 
 _MAX_RETRIES = 5
 _BACKOFF_BASE = 3.0  # seconds
+_MAX_RETRIEVAL_CHARS_PER_QUERY = 20_000
 
 
 def _is_retryable_error(e: Exception) -> bool:
@@ -34,6 +35,18 @@ def _is_retryable_error(e: Exception) -> bool:
         or "502" in text
         or "503" in text
         or "504" in text
+    )
+
+
+def _clip_retrieval(text: str) -> str:
+    text = str(text)
+
+    if len(text) <= _MAX_RETRIEVAL_CHARS_PER_QUERY:
+        return text
+
+    return (
+        text[:_MAX_RETRIEVAL_CHARS_PER_QUERY].rstrip()
+        + "\n...[retrieval truncated]"
     )
 
 
@@ -98,9 +111,9 @@ def wikipedia_multi_search(queries: list[str]) -> str:
 
     for query in clean_queries[:4]:
         try:
-            result = _run_single_query(query)
+            result = _clip_retrieval(_run_single_query(query))
             output.append(f"## Query: {query}")
-            output.append(str(result))
+            output.append(result)
             output.append("---\n")
             succeeded += 1
         except Exception as e:
