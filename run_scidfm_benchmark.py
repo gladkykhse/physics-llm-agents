@@ -9,7 +9,6 @@
 #   "polars>=1.0",
 #   "datasets>=2.19.0",
 #   "huggingface_hub>=0.24.0",
-#   "flash-attn>=2.6.0",
 # ]
 # ///
 """Benchmark runner for OpenDFM/SciDFM-MoE-A5.6B-v1.0 on 3x A100-80GB GPUs (0-2).
