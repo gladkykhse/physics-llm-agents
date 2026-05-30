@@ -1,14 +1,15 @@
 # /// script
 # requires-python = ">=3.11,<3.13"
 # dependencies = [
-#   "transformers>=4.45.0,<5.0",
+#   "transformers==4.38.2",
 #   "torch>=2.3.0",
 #   "sentencepiece>=0.2.0",
-#   "accelerate>=0.33.0",
-#   "safetensors>=0.4.3",
+#   "accelerate>=0.28.0",
+#   "safetensors>=0.4.2",
+#   "tokenizers>=0.15.0,<0.16",
 #   "polars>=1.0",
-#   "datasets>=2.19.0",
-#   "huggingface_hub>=0.24.0",
+#   "datasets>=2.18.0",
+#   "huggingface_hub>=0.21.0",
 # ]
 # ///
 """Benchmark runner for OpenDFM/SciDFM-MoE-A5.6B-v1.0 on 3x A100-80GB GPUs (0-2).
