@@ -1,12 +1,12 @@
 # /// script
 # requires-python = ">=3.11,<3.13"
 # dependencies = [
-#   "transformers==4.38.2",
+#   "transformers==4.39.3",
 #   "torch>=2.3.0",
 #   "sentencepiece>=0.2.0",
 #   "accelerate>=0.28.0",
 #   "safetensors>=0.4.2",
-#   "tokenizers>=0.15.0,<0.16",
+#   "tokenizers>=0.15.0,<0.19",
 #   "polars>=1.0",
 #   "datasets>=2.18.0",
 #   "huggingface_hub>=0.21.0",
