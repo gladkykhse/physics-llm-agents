@@ -1,10 +1,3 @@
-# =====================================================================
-# Combined Agent — Architecture A
-# Knowledge Retrieval + Planning + Math Tools
-# Linear pipeline: classify -> retrieve -> filter -> {theory | plan -> execute -> finalize}
-# =====================================================================
-
-# ── classification ───────────────────────────────────────────────────────
 problem_type_router_prompt: |
   Classify this physics problem:
   - MATHEMATICAL: the problem gives specific numerical inputs and requires you to perform arithmetic, algebra, or substitution to derive the answer.
@@ -19,7 +12,6 @@ problem_type_router_prompt: |
   ANSWER: THEORETICAL
 
 
-# ── knowledge retrieval phase ────────────────────────────────────────────
 cot_retrieve_knowledge_prompt: |
   Your task is to analyze a physics problem and generate search queries to retrieve relevant theory and formulas from Wikipedia.
 
@@ -81,7 +73,6 @@ filter_knowledge_prompt: |
   - Copy exact conditions or special cases from the document
 
 
-# ── theory path ──────────────────────────────────────────────────────────
 theory_system_prompt: |
   You are an expert physics problem-solving AI. Your task is to solve physics problems using retrieved knowledge when it is relevant and your own physics knowledge when it is not. Be direct and structured.
 
@@ -102,7 +93,6 @@ solve_prompt: |
   {problem}
 
 
-# ── math path: system prompt ─────────────────────────────────────────────
 math_system_prompt: |
   You are an expert Physics Problem-Solving Agent. Your goal is to solve college-level physics problems with high precision.
 
@@ -164,7 +154,6 @@ math_system_prompt: |
   3. **No skipping or merging steps.** Do exactly what the current step asks; the next steps will be triggered automatically.
 
 
-# ── math path: analyze ───────────────────────────────────────────────────
 analyze_prompt: |
   ## ANALYZE
 
@@ -177,7 +166,6 @@ analyze_prompt: |
   Keep this concise (under 200 words). Do not solve the problem yet.
 
 
-# ── math path: plan ──────────────────────────────────────────────────────
 plan_prompt: |
   ## Analysis of the Problem
   {analysis}
@@ -220,7 +208,6 @@ plan_prompt: |
   3. [step description]
 
 
-# ── math path: fix_plan (used when plan parsing fails) ───────────────────
 fix_plan_prompt: |
   ## Analysis of the Problem
   {analysis}
@@ -236,7 +223,6 @@ fix_plan_prompt: |
   3. [step description]
 
 
-# ── math path: execute (fresh step start) ────────────────────────────────
 execute_step_prompt: |
   ## EXECUTE STEP {step_number} OF {total_steps}
 
@@ -255,7 +241,6 @@ execute_step_prompt: |
   Choose ONE mode. Do not mix them. Use results from previous steps if needed.
 
 
-# ── math path: summarize step (post-tool wrap-up) ────────────────────────
 summarize_step_prompt: |
   ## RESULT OF STEP {step_number} OF {total_steps}
 
@@ -269,7 +254,6 @@ summarize_step_prompt: |
   Do not call any tool. Do not start the next step. Just write the conclusion as plain text.
 
 
-# ── finalize ─────────────────────────────────────────────────────────────
 finalizer_prompt: |
   ## PHASE: FINAL ANSWER
 
@@ -287,9 +271,6 @@ finalizer_prompt: |
   Answer: <A|B|C|D>
 
 
-# ── limits ───────────────────────────────────────────────────────────────
 max_plan_fix_iters: 3
 
-# Bound on how many plan steps may be executed. Set slightly above the typical
-# plan length (3-5) to absorb the rare edge case while preventing runaway loops.
 max_execute_steps: 8

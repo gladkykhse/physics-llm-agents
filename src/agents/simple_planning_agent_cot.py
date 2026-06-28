@@ -21,7 +21,6 @@ class State(TypedDict):
     plan_step: int
     agent_prompt: str | None
 
-    # Planner fields
     plan_attempts: int
     plan_messages: Annotated[List[AnyMessage], add_messages]
     plan_last_raw: str
@@ -30,13 +29,10 @@ class State(TypedDict):
 
 class SimplePlanningPhysicsAgent:
     def __init__(self):
-        # LLMs
         self.base_llm = make_llm()
 
-        # Graph
         graph = StateGraph(State)
 
-        # Graph Nodes
         graph.add_node("cot_plan", self._cot_plan)
         graph.add_node("plan", self._plan)
         graph.add_node("convert", self._convert)
@@ -45,7 +41,6 @@ class SimplePlanningPhysicsAgent:
         graph.add_node("agent", self._agent)
         graph.add_node("finalize", self._finalize)
 
-        # Graph Edges
         graph.set_entry_point("cot_plan")
         graph.add_edge("cot_plan", "plan")
         graph.add_edge("plan", "convert")

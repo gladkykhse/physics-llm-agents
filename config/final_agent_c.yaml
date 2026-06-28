@@ -1,0 +1,151 @@
+main_system_prompt: |
+  You are an expert physics problem-solving agent. You solve multiple-choice
+  physics problems by first recalling the relevant theory, then planning, then
+  carrying out the plan one step at a time.
+
+  Rules:
+  - Execute only the step you are asked to. Do not skip ahead.
+  - State the principle, law, or formula you use in each step.
+  - You never do arithmetic yourself. When a number must be computed, you write
+    the calculation; a calculator computes it and gives you the exact value
+    before the next step. Never write a numeric result of your own.
+
+analyze_prompt: |
+  ## ANALYZE
+
+  Analyze this physics problem and prepare to look up the relevant theory.
+
+  First, think briefly:
+  - What information is given? What must be found or determined?
+  - Which physical principles, laws, or concepts apply? The problem may be
+    theoretical or conceptual, not just numerical.
+  - What approach will you use?
+
+  Then identify the GENERAL theory to retrieve from Wikipedia.
+  Rules for queries:
+  - Never include specific numbers, values, or expressions from the problem.
+  - Do not query basic math. Focus on physics laws, principles, definitions,
+    effects, or formulas.
+  - For a conceptual or theoretical problem, search for the underlying
+    principle, law, effect, or definition it is testing.
+  - Give 1 to 3 focused, non-overlapping queries.
+
+  Respond in EXACTLY this format:
+
+  ### Analysis
+  <brief analysis: given, unknown, principles, approach>
+
+  ### Knowledge Needed
+  <what laws, principles, definitions, or formulas are needed>
+
+  ### Search Queries
+  1. <query>
+  2. <query>
+
+  Do not solve the problem yet.
+
+filter_knowledge_prompt: |
+  From the reference text below, extract ONLY what directly helps solve this
+  problem: the key principles, laws, definitions, effects, formulas,
+  constants, or conditions. Copy them exactly. Do NOT solve the problem and
+  do NOT add anything not present in the text.
+
+  Be brief: at most 8 short bullet points. If nothing in the text is relevant,
+  reply with exactly: None.
+
+  # Problem
+  {problem}
+
+  # Reference text
+  {knowledge}
+
+  # Output
+  - <principle, law, definition, effect, formula, constant, or condition>
+
+plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## PLAN
+
+  Based on the analysis above, write a step-by-step plan to solve this problem.
+  Write 3 to 5 steps. Order them so each step uses only the given values or the
+  results of earlier steps, and keep each step to a single calculation or idea.
+  Respond with ONLY a numbered list, no other text.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+fix_plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## Your Previous Response (could not be parsed)
+  {failed_output}
+
+  Rewrite your plan as ONLY a numbered list. Write 3 to 5 steps. No other text.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+execute_compute_prompt: |
+  ## EXECUTE STEP {step_number} OF {total_steps}
+
+  Task: {step_description}
+
+  Do only this step.
+  - State the formula, then substitute the known numbers.
+  - You never do the arithmetic. Write the calculation on its own line and stop;
+    the calculator returns the exact value. Do NOT compute, round, or state the
+    result yourself, and do NOT write a value with an "=".
+
+  Write at most one calculation, numbers only:
+      CALC: <expression, every quantity replaced by its number>
+      SOLVE: <equation containing "=" and ONE unknown letter> | <that letter>
+
+  Expression rules:
+  - Numbers and operators only. No units and no letters (write 9.81, never
+    "9.81 m/s^2"; write 2*7/9, never "2 kg * 7/9 m/s").
+  - To use a value from an earlier step, write its number, not its name.
+  - Use ** for powers and * for every multiplication. Trig is in radians:
+    write d degrees as d*pi/180.
+  - Use SOLVE only when one unknown letter is left; otherwise use CALC.
+  - If this step is only reasoning, just reason briefly with no calculation.
+
+execute_reason_prompt: |
+  ## EXECUTE STEP {step_number} OF {total_steps}
+
+  Task: {step_description}
+
+  Carry out only this step, using results from earlier steps if needed.
+  - State the principle, law, or definition that applies and reason from it.
+  - If a Reference block is shown above, use it only when it is relevant;
+    otherwise rely on your own physics knowledge.
+  - Be concise. Complete only this step.
+
+finalizer_prompt: |
+  ## FINAL ANSWER
+
+  Problem: {problem}
+
+  Using the reasoning and the calculator values shown above, give your answer.
+  - Write a brief solution (2-4 sentences): the approach and the key result.
+  - Use the calculator values above; do not recompute them.
+  - Put the final value (if any) on the Calculated Result line.
+  - Pick the closest matching option. Select exactly one letter: A, B, C, or D.
+
+  Format:
+  Solution: [brief solution]
+  Calculated Result: [value with units, or n/a]
+  Answer: <A|B|C|D>
+
+max_plan_fix_iters: 3
+max_execute_steps: 8
+
+max_brief_chars: 1500
+
+max_calcs_per_step: 4

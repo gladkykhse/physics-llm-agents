@@ -228,7 +228,9 @@ if __name__ == "__main__":
     elif args.benchmark == "scieval":
         prompt_fn = scieval.cot_system_prompt if args.prompt == "cot" else scieval.standard_system_prompt
         with log_to_temp_file() as tmp_log:
-            output_path = asyncio.run(run_scieval(model=args.model, topics=args.topics, abilities=args.abilities, prompt_fn=prompt_fn))
+            output_path = asyncio.run(
+                run_scieval(model=args.model, topics=args.topics, abilities=args.abilities, prompt_fn=prompt_fn)
+            )
             evaluate(benchmark=args.benchmark, filename=output_path, prompt_fn=prompt_fn)
 
     log_path = os.path.splitext(output_path)[0] + ".log"

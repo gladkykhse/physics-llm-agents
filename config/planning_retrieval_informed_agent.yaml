@@ -1,0 +1,152 @@
+main_system_prompt: |
+  You are an expert Physics Problem-Solving Agent. You solve physics problems by planning first, then executing each step.
+
+  Your workflow:
+  1. ANALYZE: Understand the problem and decide on an approach.
+  2. PLAN: Write a clear step-by-step plan.
+  3. EXECUTE: Carry out each step one at a time.
+  4. FINAL ANSWER: Combine results into a final answer.
+
+  Rules:
+  - Execute only the step you are asked to. Do not skip ahead.
+  - Show your reasoning or arithmetic explicitly in each step.
+
+analyze_prompt: |
+  ## ANALYZE
+
+  Analyze this physics problem and prepare to look up the relevant theory.
+
+  First, think briefly:
+  - What information is given? What must be found or determined?
+  - Which physical principles, laws, or concepts apply? The problem may be
+    theoretical or conceptual, not just numerical.
+  - What approach will you use?
+
+  Then identify the GENERAL theory to retrieve from Wikipedia.
+  Rules for queries:
+  - Never include specific numbers, values, or expressions from the problem.
+  - Do not query basic math. Focus on physics laws, principles, definitions,
+    effects, or formulas.
+  - For a conceptual or theoretical problem, search for the underlying
+    principle, law, effect, or definition it is testing.
+  - Give 1 to 4 focused, non-overlapping queries.
+
+  Respond in EXACTLY this format:
+
+  ### Analysis
+  <brief analysis: given, unknown, principles, approach>
+
+  ### Knowledge Needed
+  <what laws, principles, definitions, or formulas are needed>
+
+  ### Search Queries
+  1. <query>
+  2. <query>
+
+  Do not solve the problem yet.
+
+retrieve_knowledge_prompt: |
+  Execute the `wikipedia_multi_search` tool using the "Search Queries" you
+  just identified.
+
+  - Provide the queries as a single list of strings for the `queries` argument.
+  - Do not summarize the analysis; only perform the tool call.
+  - Keep the queries technical and concise, matching your reasoning above.
+
+  Call `wikipedia_multi_search(queries=[...])` now.
+
+filter_knowledge_prompt: |
+  From the reference text below, extract ONLY what helps solve this problem:
+  the key principles, laws, definitions, effects, formulas, constants, or
+  conditions. Copy them exactly. Do NOT solve the problem and do NOT add
+  anything not present in the text.
+
+  Be focused: at most 8 short bullet points. If nothing is relevant, reply
+  with exactly: None.
+
+  # Problem
+  {problem}
+
+  # Reference text
+  {knowledge}
+
+  # Output
+  - <principle, law, definition, effect, formula, constant, or condition>
+
+plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## PLAN
+
+  Write a plan that a solver can follow WITHOUT any outside knowledge. Use the
+  Reference above (if present) to make the plan precise and self-contained.
+
+  - First, under "### Key Facts", list the exact formula(s), constant value(s),
+    law(s), or relationship(s) the solver will need, in clean form. Where a
+    value from the problem applies, substitute it so the solver has the numbers
+    ready. If no external facts are needed, write "- None".
+  - Then, under "### Plan", write 3 to 5 numbered steps. Each step states
+    exactly what to compute or reason, and names the Key Fact it relies on. The
+    solver will see only your Key Facts and Plan, nothing else, so make them
+    sufficient on their own.
+
+  Respond in EXACTLY this format and nothing else:
+
+  ### Key Facts
+  - <formula, constant, law, or relationship (with values where known)>
+
+  ### Plan
+  1. <step that uses a key fact>
+  2. <step>
+  3. <step>
+
+fix_plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## Your Previous Response (could not be parsed)
+  {failed_output}
+
+  Rewrite it in EXACTLY this format and nothing else. Write 3 to 5 numbered
+  steps under "### Plan", each naming the Key Fact it uses.
+
+  ### Key Facts
+  - <formula, constant, law, or relationship (with values where known)>
+
+  ### Plan
+  1. <step that uses a key fact>
+  2. <step>
+  3. <step>
+
+execute_prompt: |
+  ## EXECUTE STEP {step_number} OF {total_steps}
+
+  Task: {step_description}
+
+  Carry out this step now. Use results from previous steps if needed.
+  - The plan above lists the Key Facts (formulas, constants, relationships) you
+    need. Use them directly; you do not need any outside knowledge.
+  - If calculating, substitute all known values and show the arithmetic.
+  - If reasoning, state your argument with clear justification.
+
+  Be concise. Only complete this step.
+
+finalizer_prompt: |
+  ## FINAL ANSWER
+
+  Problem: {problem}
+
+  Using the reasoning above, provide your answer.
+  - Write a brief solution (3-5 sentences): state the approach, key steps, and result.
+  - Pick the closest matching option.
+  - You MUST select exactly one letter: A, B, C, or D.
+
+  Format:
+  Solution: [brief solution]
+  Calculated Result: [value with units]
+  Answer: <A|B|C|D>
+
+max_plan_fix_iters: 3
+
+max_execute_steps: 8

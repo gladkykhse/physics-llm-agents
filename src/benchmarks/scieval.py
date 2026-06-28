@@ -60,24 +60,15 @@ def parse_results_to_dict(
     single_letter_ai_answer: bool = False,
 ) -> dict[str, object]:
     if single_letter_ai_answer:
-        extract_expr = (
-            pl.col(model_answer_col)
-            .str.extract(r"([ABCD])")
-            .alias("pred_ans")
-        )
+        extract_expr = pl.col(model_answer_col).str.extract(r"([ABCD])").alias("pred_ans")
     else:
         extract_expr = (
-            pl.col(model_answer_col)
-            .str.extract(r"(?i)answer.*?([ABCD])")
-            .str.to_uppercase()
-            .alias("pred_ans")
+            pl.col(model_answer_col).str.extract(r"(?i)answer.*?([ABCD])").str.to_uppercase().alias("pred_ans")
         )
 
     df = df.with_columns(extract_expr)
 
-    df = df.with_columns(
-        pl.col("pred_ans").is_not_null().alias("answered")
-    )
+    df = df.with_columns(pl.col("pred_ans").is_not_null().alias("answered"))
 
     df = df.with_columns(
         pl.when(pl.col("answered") & pl.col("answer").is_not_null())
@@ -95,27 +86,13 @@ def parse_results_to_dict(
     pct_incorrect = float(df["incorrect"].mean())
     pct_not_answered = float(df["not_answered"].mean())
 
-    ability_accuracy = (
-        df.group_by("ability")
-        .agg(pl.col("correct").mean().alias("acc"))
-        .sort("ability")
-    )
+    ability_accuracy = df.group_by("ability").agg(pl.col("correct").mean().alias("acc")).sort("ability")
 
-    topic_accuracy = (
-        df.group_by("topic")
-        .agg(pl.col("correct").mean().alias("acc"))
-        .sort("topic")
-    )
+    topic_accuracy = df.group_by("topic").agg(pl.col("correct").mean().alias("acc")).sort("topic")
 
-    abilities = {
-        row["ability"]: round(float(row["acc"]), 4)
-        for row in ability_accuracy.to_dicts()
-    }
+    abilities = {row["ability"]: round(float(row["acc"]), 4) for row in ability_accuracy.to_dicts()}
 
-    topics = {
-        row["topic"]: round(float(row["acc"]), 4)
-        for row in topic_accuracy.to_dicts()
-    }
+    topics = {row["topic"]: round(float(row["acc"]), 4) for row in topic_accuracy.to_dicts()}
 
     return {
         "correct": round(pct_correct, 4),
@@ -138,23 +115,9 @@ def plot_results(results_json: dict[str, object], filename: str) -> None:
     gs = fig.add_gridspec(2, 2, height_ratios=[1, 2])
 
     ax1 = fig.add_subplot(gs[0, 0])
-    ax1.bar(
-        ["Model"],
-        [correct],
-        label="Correct"
-    )
-    ax1.bar(
-        ["Model"],
-        [not_answered],
-        bottom=[correct],
-        label="Not Answered"
-    )
-    ax1.bar(
-        ["Model"],
-        [incorrect],
-        bottom=[correct + not_answered],
-        label="Incorrect"
-    )
+    ax1.bar(["Model"], [correct], label="Correct")
+    ax1.bar(["Model"], [not_answered], bottom=[correct], label="Not Answered")
+    ax1.bar(["Model"], [incorrect], bottom=[correct + not_answered], label="Incorrect")
     ax1.set_ylim(0, 1)
     ax1.set_title("Overall Breakdown")
     ax1.legend()
@@ -180,6 +143,7 @@ def plot_results(results_json: dict[str, object], filename: str) -> None:
     plt.tight_layout()
     plt.savefig(filename)
     plt.close()
+
 
 def print_results_table(results_json: dict[str, object], title: str = "SciEval Benchmark Results") -> None:
     console = Console()

@@ -84,15 +84,10 @@ def parse_results_to_dict(
     single_letter_ai_answer: bool = False,
 ) -> dict[str, object]:
     if single_letter_ai_answer:
-        df = df.with_columns(
-            pl.col(model_answer_col).str.extract(r"([ABCD])").alias("pred_ans")
-        )
+        df = df.with_columns(pl.col(model_answer_col).str.extract(r"([ABCD])").alias("pred_ans"))
     else:
         df = df.with_columns(
-            pl.col(model_answer_col)
-            .str.extract(r"(?i)answer.*?([ABCD])")
-            .str.to_uppercase()
-            .alias("pred_ans")
+            pl.col(model_answer_col).str.extract(r"(?i)answer.*?([ABCD])").str.to_uppercase().alias("pred_ans")
         )
 
     df = df.with_columns(

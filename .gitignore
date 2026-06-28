@@ -206,9 +206,21 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Benchmark Directory
-benchmarks
+# Benchmark datasets (downloaded locally) — anchored to repo root so src/benchmarks/ stays tracked
+/benchmarks/
 
-# Data Directory
-data/
+# Prepared data (generated locally) — anchored so src/data/ stays tracked
+/data/
+
+# Artifacts Directory (benchmark outputs: parquet/json/png/logs)
+/artifacts/
+
+# Local Postgres data (created by docker-compose)
+/pgdata/
+
+# macOS
+.DS_Store
+
+# JetBrains IDE
+.idea/
 

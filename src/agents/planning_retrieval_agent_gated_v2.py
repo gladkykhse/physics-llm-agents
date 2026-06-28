@@ -2,43 +2,71 @@ import logging as log
 import re
 from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
+from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
+from src.agents.utils.tools import wikipedia_multi_search
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 
-agent_cfg = load_yaml("config/planning_agent.yaml")
+agent_cfg = load_yaml("config/planning_retrieval_agent_gated_v2.yaml")
 
 log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+MAX_BRIEF_CHARS = 300
+
+BRIEF_HEADER = "# Reference fact (looked up; use only if directly relevant)\n"
 
 
 class State(TypedDict):
     messages: Annotated[List[AnyMessage], add_messages]
+    knowledge_messages: Annotated[List[AnyMessage], add_messages]
     problem: str
     analysis: str
+    needs_retrieval: bool
+    knowledge_gap: str
+    knowledge_brief: str
     plan: List[str]
     current_step: int
     plan_fix_iter: int
     last_plan_output: str
 
 
-class PhysicsReactAgent:
+class PhysicsPlanningSelectiveRetrievalV2Agent:
     def __init__(self) -> None:
+        knowledge_tools_list = [wikipedia_multi_search]
+
         self.llm = make_llm(temperature=0.0)
+        self.knowledge_tools_llm = make_llm(temperature=0.0).bind_tools(knowledge_tools_list)
 
         graph = StateGraph(State)
+        self.knowledge_tools = ToolNode(knowledge_tools_list, messages_key="knowledge_messages")
 
+        graph.add_node("gate", self._gate)
         graph.add_node("analyze", self._analyze)
+        graph.add_node("retrieve_knowledge", self._retrieve_knowledge)
+        graph.add_node("knowledge_tools", self.knowledge_tools)
+        graph.add_node("filter_knowledge", self._filter_knowledge)
+        graph.add_node("verify_knowledge", self._verify_knowledge)
         graph.add_node("plan", self._plan)
         graph.add_node("fix_plan", self._fix_plan)
         graph.add_node("execute", self._execute)
         graph.add_node("finalize", self._finalize)
 
-        graph.set_entry_point("analyze")
-        graph.add_edge("analyze", "plan")
+        graph.set_entry_point("gate")
+        graph.add_edge("gate", "analyze")
+        graph.add_conditional_edges(
+            "analyze",
+            self._route_gate,
+            {"retrieve_knowledge": "retrieve_knowledge", "plan": "plan"},
+        )
+        graph.add_edge("retrieve_knowledge", "knowledge_tools")
+        graph.add_edge("knowledge_tools", "filter_knowledge")
+        graph.add_edge("filter_knowledge", "verify_knowledge")
+        graph.add_edge("verify_knowledge", "plan")
         graph.add_conditional_edges(
             "plan",
             self._route_plan,
@@ -58,6 +86,16 @@ class PhysicsReactAgent:
 
         self.graph = graph.compile()
 
+    def _gate(self, state: State) -> State:
+        prompt = HumanMessage(content=agent_cfg["gate_prompt"].format(problem=state["problem"]))
+        ai = self.llm.invoke([SystemMessage(content=agent_cfg["main_system_prompt"]), prompt])
+        gap = self._parse_gap(ai.content)
+        needs = self._needs_retrieval(gap)
+        log.info(f"[GATE] needs_retrieval={needs} gap={gap!r} | raw={ai.content.strip()[:160]!r}")
+        state["knowledge_gap"] = gap if needs else ""
+        state["needs_retrieval"] = needs
+        return state
+
     def _analyze(self, state: State) -> State:
         prompt = HumanMessage(content=agent_cfg["analyze_prompt"])
         msgs = state["messages"] + [prompt]
@@ -68,15 +106,78 @@ class PhysicsReactAgent:
         state["messages"] = []
         return state
 
-    def _plan(self, state: State) -> State:
-        prompt_content = agent_cfg["plan_prompt"].format(
-            analysis=state["analysis"],
+    def _retrieve_knowledge(self, state: State) -> State:
+        prompt = HumanMessage(content=agent_cfg["retrieve_knowledge_prompt"].format(gap=state["knowledge_gap"]))
+        msgs = [SystemMessage(content=agent_cfg["main_system_prompt"]), prompt]
+        ai = self.knowledge_tools_llm.invoke(msgs)
+
+        log.info(f"[RETRIEVE_KNOWLEDGE] - Output: {ai.content}")
+        tool_calls = getattr(ai, "tool_calls", None)
+        if tool_calls:
+            log.info(f"[RETRIEVE_KNOWLEDGE] - Tool Calls: {tool_calls}")
+
+        state["knowledge_messages"] = [ai]
+        return state
+
+    def _filter_knowledge(self, state: State) -> State:
+        knowledge_results = []
+        for msg in reversed(state["knowledge_messages"]):
+            if isinstance(msg, ToolMessage):
+                knowledge_results.append(msg.content)
+        knowledge_str = "\n\n".join(reversed(knowledge_results))
+
+        if not knowledge_str.strip():
+            log.info("[FILTER_KNOWLEDGE] - No retrieved content; skipping.")
+            state["knowledge_brief"] = ""
+            return state
+
+        prompt = HumanMessage(
+            content=agent_cfg["filter_knowledge_prompt"].format(gap=state["knowledge_gap"], knowledge=knowledge_str)
         )
+        ai = self.llm.invoke([prompt])
+        brief = ai.content.strip()
+
+        if not brief or brief.lower().rstrip(".") == "none":
+            log.info("[FILTER_KNOWLEDGE] - Brief empty/None; skipping.")
+            state["knowledge_brief"] = ""
+            return state
+
+        if len(brief) > MAX_BRIEF_CHARS:
+            brief = brief[:MAX_BRIEF_CHARS].rstrip() + " ..."
+
+        log.info(f"[FILTER_KNOWLEDGE] - Output: {brief}")
+        state["knowledge_brief"] = brief
+        return state
+
+    def _verify_knowledge(self, state: State) -> State:
+        brief = state.get("knowledge_brief", "")
+        if not brief:
+            return state
+
+        prompt = HumanMessage(content=agent_cfg["verify_brief_prompt"].format(gap=state["knowledge_gap"], brief=brief))
+        ai = self.llm.invoke([prompt])
+        verdict = ai.content.strip().upper()
+        accepted = verdict.startswith("ACCEPT")
+        log.info(f"[VERIFY_KNOWLEDGE] verdict={verdict[:20]!r} accepted={accepted}")
+
+        if not accepted:
+            state["knowledge_brief"] = ""
+            return state
+
+        injected = BRIEF_HEADER + brief
+        state["knowledge_brief"] = injected
+        state["messages"] = [HumanMessage(content=injected)]
+        return state
+
+    def _plan(self, state: State) -> State:
+        prompt_content = agent_cfg["plan_prompt"].format(analysis=state["analysis"])
         planning_msgs = [
             SystemMessage(content=agent_cfg["main_system_prompt"]),
             HumanMessage(content=f"# Problem\n{state['problem']}"),
-            HumanMessage(content=prompt_content),
         ]
+        if state.get("knowledge_brief"):
+            planning_msgs.append(HumanMessage(content=state["knowledge_brief"]))
+        planning_msgs.append(HumanMessage(content=prompt_content))
 
         ai = self.llm.invoke(planning_msgs)
         log.info(f"[PLAN] - {ai.content}")
@@ -102,8 +203,10 @@ class PhysicsReactAgent:
         planning_msgs = [
             SystemMessage(content=agent_cfg["main_system_prompt"]),
             HumanMessage(content=f"# Problem\n{state['problem']}"),
-            HumanMessage(content=prompt_content),
         ]
+        if state.get("knowledge_brief"):
+            planning_msgs.append(HumanMessage(content=state["knowledge_brief"]))
+        planning_msgs.append(HumanMessage(content=prompt_content))
 
         ai = self.llm.invoke(planning_msgs)
         state["plan_fix_iter"] += 1
@@ -149,6 +252,13 @@ class PhysicsReactAgent:
         state["messages"] = [ai]
         return state
 
+    def _route_gate(self, state: State) -> str:
+        if state.get("needs_retrieval"):
+            log.info("[ROUTE_GATE] Atom needed -> retrieving.")
+            return "retrieve_knowledge"
+        log.info("[ROUTE_GATE] No atom -> planning directly (pure-planning path).")
+        return "plan"
+
     def _route_plan(self, state: State) -> str:
         if state["plan"]:
             log.info(f"[ROUTE_PLAN] Plan ready with {len(state['plan'])} steps.")
@@ -183,6 +293,22 @@ class PhysicsReactAgent:
         lines = re.findall(r"^\s*\d+\.\s*(.+)$", text, re.MULTILINE)
         return [line.strip() for line in lines if line.strip()]
 
+    @staticmethod
+    def _parse_gap(text: str) -> str:
+        matches = re.findall(r"LOOKUP\s*[:\-]\s*(.+)", text, flags=re.IGNORECASE)
+        return matches[-1].strip() if matches else ""
+
+    @staticmethod
+    def _needs_retrieval(gap: str) -> bool:
+        g = gap.strip().strip(".").strip().lower()
+        if len(g) <= 3:
+            return False
+        if g in {"none", "no", "n/a", "na", "none needed", "no gap", "nothing"}:
+            return False
+        if re.match(r"^(none|no gap|nothing|not needed|no lookup)\b", g):
+            return False
+        return True
+
     def solve(self, problem: str) -> str:
         question, options = scieval_split_problem_and_options(full_text=problem)
         log.info(f"[QUESTION] - {question}")
@@ -193,8 +319,12 @@ class PhysicsReactAgent:
                 SystemMessage(content=agent_cfg["main_system_prompt"]),
                 HumanMessage(content=f"# Problem\n{problem}"),
             ],
+            "knowledge_messages": [],
             "problem": problem,
             "analysis": "",
+            "needs_retrieval": False,
+            "knowledge_gap": "",
+            "knowledge_brief": "",
             "plan": [],
             "current_step": 0,
             "plan_fix_iter": 0,

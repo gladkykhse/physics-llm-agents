@@ -21,12 +21,6 @@ class State(TypedDict):
 
 
 class PhysicsReactAgent:
-    """
-    ReAct-style reasoning agent WITHOUT tools.
-    Follows the same Thought -> Act -> Observation loop as the math agent,
-    but all actions are internal reasoning steps performed by the LLM itself.
-    """
-
     def __init__(self) -> None:
         self.llm = make_llm(temperature=0.0)
 
@@ -50,8 +44,6 @@ class PhysicsReactAgent:
         graph.add_edge("finalize", END)
 
         self.graph = graph.compile()
-
-    # ── nodes ────────────────────────────────────────────────────────────
 
     def _thought(self, state: State) -> State:
         prompt = HumanMessage(content=agent_cfg["thought_prompt"])
@@ -80,8 +72,6 @@ class PhysicsReactAgent:
         state["messages"] = [ai]
         return state
 
-    # ── routing ──────────────────────────────────────────────────────────
-
     def _route_thought(self, state: State) -> str:
         last = state["messages"][-1]
         content = (last.content or "").strip()
@@ -100,8 +90,6 @@ class PhysicsReactAgent:
 
         log.info("[ROUTE_ACT] Continuing to next thought.")
         return "thought"
-
-    # ── public api ───────────────────────────────────────────────────────
 
     def solve(self, problem: str) -> str:
         question, options = scieval_split_problem_and_options(full_text=problem)

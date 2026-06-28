@@ -1,8 +1,7 @@
 import logging as log
 from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import (AIMessage, HumanMessage, SystemMessage,
-                                     ToolMessage)
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
@@ -81,8 +80,6 @@ class PhysicsReactAgent:
 
         knowledge_str = "\n\n".join(reversed(knowledge_results))
 
-        # =======================================================
-        # Uncomment for LLM-based filtering of retrieved sections
         prompt = HumanMessage(
             content=agent_cfg["filter_knowledge_prompt"].format(problem=state["problem"], knowledge=knowledge_str)
         )
@@ -90,14 +87,9 @@ class PhysicsReactAgent:
 
         filtered_knowledge = "# Wikipedia Search Results\n\n" + ai.content
         log.info(f"[FILTER_KNOWLEDGE] - Output: {filtered_knowledge}")
-        # =======================================================
 
         # state["messages"] = [AIMessage(content=knowledge_str)]
-
-        # =======================================================
-        # Uncomment for LLM-based filtering of retrieved sections
         state["messages"] = [AIMessage(content=filtered_knowledge)]
-        # =======================================================
 
         return state
 

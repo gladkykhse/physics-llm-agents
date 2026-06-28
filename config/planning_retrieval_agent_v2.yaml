@@ -1,0 +1,157 @@
+main_system_prompt: |
+  You are an expert Physics Problem-Solving Agent. You solve physics problems by planning first, then executing each step.
+
+  Your workflow:
+  1. ANALYZE: Understand the problem and decide on an approach.
+  2. PLAN: Write a clear step-by-step plan.
+  3. EXECUTE: Carry out each step one at a time.
+  4. FINAL ANSWER: Combine results into a final answer.
+
+  Rules:
+  - Execute only the step you are asked to. Do not skip ahead.
+  - Show your reasoning or arithmetic explicitly in each step.
+
+analyze_prompt: |
+  ## ANALYZE
+
+  Before making a plan, analyze this problem:
+  - What information is given?
+  - What needs to be found or determined?
+  - What physics principles or concepts apply?
+  - What approach will you use?
+
+  Think through this briefly. Do not solve the problem yet.
+
+make_queries_prompt: |
+  Identify the GENERAL physics theory to look up from Wikipedia for the problem
+  below. Do NOT solve it.
+
+  Query rules:
+  - Never include specific numbers, values, or expressions from the problem.
+  - Do not query basic math. Focus on physics laws, principles, definitions,
+    effects, formulas, or named constants.
+  - Name the correct regime so you fetch the right theory, e.g. "classical" vs
+    "relativistic", "electrostatic" vs "magnetostatic", "non-relativistic",
+    "statics" vs "rotational dynamics".
+  - For a conceptual or qualitative problem, search for the underlying
+    principle, law, effect, or definition it tests.
+  - Give 1 to 3 focused, non-overlapping queries.
+
+  # Problem
+  {problem}
+
+  Respond in EXACTLY this format and nothing else:
+
+  ### Search Queries
+  1. <query>
+  2. <query>
+
+retrieve_knowledge_prompt: |
+  Execute the `wikipedia_multi_search` tool using the "Search Queries" you just
+  identified.
+
+  - Provide the queries as a single list of strings for the `queries` argument.
+  - Do not summarise; only perform the tool call.
+  - Keep the queries technical and concise, matching your reasoning above.
+
+  Call `wikipedia_multi_search(queries=[...])` now.
+
+filter_knowledge_prompt: |
+  From the reference text below, copy ONLY statements that are literally present
+  AND directly give a principle, law, formula, definition, or constant needed to
+  solve THIS specific problem.
+
+  Strict rules:
+  - Copy verbatim. Do NOT rephrase, generalise, or add anything not literally in
+    the text.
+  - Conceptual or qualitative problems usually need NO formula. Whenever the text
+    is not clearly and directly relevant, reply with exactly: None.
+  - At most 4 short bullet points.
+  - When in doubt, reply: None.
+
+  # Problem
+  {problem}
+
+  # Reference text
+  {knowledge}
+
+  # Output
+  - <verbatim principle, law, formula, definition, or constant>
+
+verify_brief_prompt: |
+  These reference notes were extracted for the problem below:
+  ---
+  {brief}
+  ---
+
+  # Problem
+  {problem}
+
+  Reply ACCEPT only if EVERY statement above is BOTH:
+    1. consistent with standard, correct physics, and
+    2. relevant to this problem.
+  Otherwise reply REJECT (e.g. something is wrong, off-topic, the wrong regime,
+  or too vague to help).
+
+  Answer with exactly one word: ACCEPT or REJECT.
+
+plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## PLAN
+
+  Based on the analysis above, write a step-by-step plan to solve this problem.
+  Write 3 to 5 steps. Respond with ONLY a numbered list, no other text.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+fix_plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## Your Previous Response (could not be parsed)
+  {failed_output}
+
+  Rewrite your plan as ONLY a numbered list. Write 3 to 5 steps. No other text.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+execute_prompt: |
+  ## EXECUTE STEP {step_number} OF {total_steps}
+
+  Task: {step_description}
+
+  Carry out this step now. Use results from previous steps if needed.
+  - State the principle, formula, or reasoning you are applying.
+  - If a "Reference" block appears earlier, use it only when it is directly
+    relevant to this step; otherwise rely on your own physics knowledge.
+  - If calculating, substitute all known values and show the arithmetic.
+  - If reasoning, state your argument with clear justification.
+
+  Be concise. Only complete this step.
+
+finalizer_prompt: |
+  ## FINAL ANSWER
+
+  Problem: {problem}
+
+  Using your worked reasoning in the steps above, provide your answer.
+  - Write a brief solution (3-5 sentences): state the approach, key steps, and result.
+  - Pick the closest matching option.
+  - You MUST select exactly one letter: A, B, C, or D.
+
+  Format:
+  Solution: [brief solution]
+  Calculated Result: [value with units]
+  Answer: <A|B|C|D>
+
+max_plan_fix_iters: 3
+
+max_execute_steps: 8

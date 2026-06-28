@@ -2,15 +2,13 @@ import logging as log
 import re
 from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import (AIMessage, HumanMessage, SystemMessage,
-                                     ToolMessage)
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
-from src.agents.utils.tools import (sympy_eval, sympy_solve, vector_math,
-                                    wikipedia_multi_search)
+from src.agents.utils.tools import sympy_eval, sympy_solve, vector_math, wikipedia_multi_search
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 
@@ -19,45 +17,22 @@ agent_cfg = load_yaml("config/final_agent_b.yaml")
 log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-# ── State ────────────────────────────────────────────────────────────────
-
 class State(TypedDict):
-    # knowledge retrieval pipeline (accumulates via add_messages)
     knowledge_messages: Annotated[List[AnyMessage], add_messages]
-    # core problem fields
     problem: str
-    problem_type: str              # "math" or "theory"
-    filtered_knowledge: str        # compressed retrieval output
-    # planning fields
+    problem_type: str
+    filtered_knowledge: str
     analysis: str
     plan: List[str]
     current_step: int
-    step_summaries: List[str]      # one summary string per completed step
+    step_summaries: List[str]
     plan_fix_iter: int
     last_plan_output: str
-    # mini-react state (replaced entirely each update – no reducer)
     step_context: List[AnyMessage]
     step_react_iter: int
 
 
-# ── Agent ────────────────────────────────────────────────────────────────
-
 class PhysicsReactAgent:
-    """
-    Combined Planning + Knowledge Retrieval + Tool-augmented Agent.
-
-    Workflow:
-      1. Classify problem as MATHEMATICAL or THEORETICAL.
-      2. Retrieve & filter Wikipedia knowledge.
-      3. Analyze the problem (with knowledge context).
-      4. Generate a step-by-step plan.
-      5. Execute each step:
-         - THEORY steps: single LLM call, no tools.
-         - MATH steps:   mini-ReAct loop (thought → act → tool → thought …).
-      6. After each step, summarize result to 1-2 sentences (context control).
-      7. Finalize: select answer option from accumulated step summaries.
-    """
-
     def __init__(self) -> None:
         knowledge_tools_list = [wikipedia_multi_search]
         math_tools_list = [sympy_eval, sympy_solve, vector_math]
@@ -70,7 +45,6 @@ class PhysicsReactAgent:
 
         graph = StateGraph(State)
 
-        # knowledge retrieval nodes (re-used from sequential agent)
         self.knowledge_tools = ToolNode(knowledge_tools_list, messages_key="knowledge_messages")
         graph.add_node("classify", self._classify)
         graph.add_node("cot_retrieve_knowledge", self._cot_retrieve_knowledge)
@@ -78,31 +52,24 @@ class PhysicsReactAgent:
         graph.add_node("knowledge_tools", self.knowledge_tools)
         graph.add_node("filter_knowledge", self._filter_knowledge)
 
-        # planning nodes
         graph.add_node("analyze", self._analyze)
         graph.add_node("plan", self._plan)
         graph.add_node("fix_plan", self._fix_plan)
 
-        # step execution nodes
         graph.add_node("prepare_step", self._prepare_step)
         graph.add_node("execute_theory_step", self._execute_theory_step)
         graph.add_node("step_thought", self._step_thought)
         graph.add_node("step_act", self._step_act)
         graph.add_node("summarize_step", self._summarize_step)
 
-        # finalization
         graph.add_node("finalize", self._finalize)
 
-        # ── edges ────────────────────────────────────────────────────
-
-        # knowledge pipeline (linear)
         graph.set_entry_point("classify")
         graph.add_edge("classify", "cot_retrieve_knowledge")
         graph.add_edge("cot_retrieve_knowledge", "retrieve_knowledge")
         graph.add_edge("retrieve_knowledge", "knowledge_tools")
         graph.add_edge("knowledge_tools", "filter_knowledge")
 
-        # planning pipeline
         graph.add_edge("filter_knowledge", "analyze")
         graph.add_edge("analyze", "plan")
         graph.add_conditional_edges(
@@ -116,17 +83,14 @@ class PhysicsReactAgent:
             {"execute": "prepare_step", "fix_plan": "fix_plan", "finalize": "finalize"},
         )
 
-        # step dispatch
         graph.add_conditional_edges(
             "prepare_step",
             self._route_step_type,
             {"theory": "execute_theory_step", "math": "step_thought"},
         )
 
-        # theory step → summarize
         graph.add_edge("execute_theory_step", "summarize_step")
 
-        # math mini-react loop
         graph.add_conditional_edges(
             "step_thought",
             self._route_step_thought,
@@ -138,7 +102,6 @@ class PhysicsReactAgent:
             {"thought": "step_thought", "summarize": "summarize_step"},
         )
 
-        # after summarization → next step or finalize
         graph.add_conditional_edges(
             "summarize_step",
             self._route_next_step,
@@ -148,8 +111,6 @@ class PhysicsReactAgent:
         graph.add_edge("finalize", END)
 
         self.graph = graph.compile()
-
-    # ── Knowledge Retrieval Nodes ────────────────────────────────────
 
     def _classify(self, state: State) -> State:
         prompt = agent_cfg["problem_type_router_prompt"].format(problem=state["problem"])
@@ -161,16 +122,14 @@ class PhysicsReactAgent:
         elif "ANSWER: MATHEMATICAL" in text:
             problem_type = "math"
         else:
-            problem_type = "math"  # default to math (safer)
+            problem_type = "math"
 
         log.info(f"[CLASSIFY] {problem_type} | raw: {ai.content}")
         state["problem_type"] = problem_type
         return state
 
     def _cot_retrieve_knowledge(self, state: State) -> State:
-        prompt = HumanMessage(
-            content=agent_cfg["cot_retrieve_knowledge_prompt"].format(problem=state["problem"])
-        )
+        prompt = HumanMessage(content=agent_cfg["cot_retrieve_knowledge_prompt"].format(problem=state["problem"]))
         msgs = state["knowledge_messages"] + [prompt]
         ai = self.base_llm.invoke(msgs)
         log.info(f"[COT_RETRIEVE] {ai.content}")
@@ -194,9 +153,7 @@ class PhysicsReactAgent:
         knowledge_str = "\n\n".join(reversed(knowledge_results))
 
         prompt = HumanMessage(
-            content=agent_cfg["filter_knowledge_prompt"].format(
-                problem=state["problem"], knowledge=knowledge_str
-            )
+            content=agent_cfg["filter_knowledge_prompt"].format(problem=state["problem"], knowledge=knowledge_str)
         )
         ai = self.base_llm.invoke([prompt])
 
@@ -205,10 +162,7 @@ class PhysicsReactAgent:
         state["filtered_knowledge"] = filtered
         return state
 
-    # ── Analysis & Planning Nodes ────────────────────────────────────
-
     def _analyze(self, state: State) -> State:
-        """Produce a short analysis of the problem using retrieved knowledge."""
         msgs = [HumanMessage(content=f"# Problem\n{state['problem']}")]
         if state["filtered_knowledge"]:
             msgs.append(HumanMessage(content=state["filtered_knowledge"]))
@@ -220,7 +174,6 @@ class PhysicsReactAgent:
         return state
 
     def _plan(self, state: State) -> State:
-        """Generate a numbered plan from the analysis."""
         plan_key = "plan_math_prompt" if state["problem_type"] == "math" else "plan_theory_prompt"
         prompt_content = agent_cfg[plan_key].format(analysis=state["analysis"])
 
@@ -271,10 +224,7 @@ class PhysicsReactAgent:
 
         return state
 
-    # ── Step Preparation ─────────────────────────────────────────────
-
     def _prepare_step(self, state: State) -> State:
-        """Build a fresh step_context for the current step, keeping context bounded."""
         step_idx = state["current_step"]
         step_desc = state["plan"][step_idx]
 
@@ -284,22 +234,14 @@ class PhysicsReactAgent:
             HumanMessage(content=f"# Problem\n{state['problem']}"),
         ]
 
-        # filtered knowledge (compact string)
         if state["filtered_knowledge"]:
             ctx.append(HumanMessage(content=state["filtered_knowledge"]))
 
-        # plan overview with current step highlighted
-        plan_text = "\n".join(
-            f"{'>> ' if i == step_idx else '   '}{i + 1}. {s}"
-            for i, s in enumerate(state["plan"])
-        )
+        plan_text = "\n".join(f"{'>> ' if i == step_idx else '   '}{i + 1}. {s}" for i, s in enumerate(state["plan"]))
         ctx.append(HumanMessage(content=f"# Plan\n{plan_text}"))
 
-        # summaries of completed steps
         if state["step_summaries"]:
-            summaries = "\n".join(
-                f"Step {i + 1}: {s}" for i, s in enumerate(state["step_summaries"])
-            )
+            summaries = "\n".join(f"Step {i + 1}: {s}" for i, s in enumerate(state["step_summaries"]))
             ctx.append(HumanMessage(content=f"# Completed Steps\n{summaries}"))
 
         state["step_context"] = ctx
@@ -307,10 +249,7 @@ class PhysicsReactAgent:
         log.info(f"[PREPARE_STEP] Step {step_idx + 1}/{len(state['plan'])}: {step_desc}")
         return state
 
-    # ── Theory Step Execution ────────────────────────────────────────
-
     def _execute_theory_step(self, state: State) -> State:
-        """Single LLM call for a theory step (no tools)."""
         ctx = list(state["step_context"])
         step_idx = state["current_step"]
 
@@ -329,10 +268,7 @@ class PhysicsReactAgent:
         state["step_context"] = ctx
         return state
 
-    # ── Math Mini-ReAct Loop ─────────────────────────────────────────
-
     def _step_thought(self, state: State) -> State:
-        """Thought phase of the mini-ReAct loop for a math step."""
         ctx = list(state["step_context"])
         step_idx = state["current_step"]
 
@@ -352,19 +288,15 @@ class PhysicsReactAgent:
         return state
 
     def _step_act(self, state: State) -> State:
-        """Action phase: call tools-bound LLM, execute tool inline."""
         ctx = list(state["step_context"])
         step_idx = state["current_step"]
 
-        # brief action nudge to maintain Human/AI alternation
         ctx.append(HumanMessage(content=agent_cfg["step_act_prompt"]))
 
         try:
             ai = self.math_tools_llm.invoke(ctx)
         except Exception as e:
-            # Llama 8B sometimes returns malformed tool calls (args as string
-            # instead of dict) which causes pydantic validation errors in
-            # LangChain's message parsing. Treat as a failed action.
+            # Llama 8B can emit malformed tool calls that fail LangChain parsing
             log.warning(f"[ACT step {step_idx + 1}] LLM returned malformed output: {e}")
             ai = AIMessage(content="Tool call failed due to malformed output.")
         ctx.append(ai)
@@ -372,7 +304,6 @@ class PhysicsReactAgent:
         tool_calls = getattr(ai, "tool_calls", None)
 
         if tool_calls:
-            # truncate to one tool call
             if len(tool_calls) > 1:
                 log.warning(f"[ACT step {step_idx + 1}] {len(tool_calls)} calls; using first only.")
                 ai.tool_calls = tool_calls[:1]
@@ -394,20 +325,16 @@ class PhysicsReactAgent:
         state["step_react_iter"] += 1
         return state
 
-    # ── Step Summarization ───────────────────────────────────────────
-
     def _summarize_step(self, state: State) -> State:
-        """Compress a completed step into 1-2 sentences for context control."""
         step_idx = state["current_step"]
 
-        # Gather ALL tool results and the final AI reasoning
         tool_results = []
         last_thought = ""
         for msg in state["step_context"]:
             if isinstance(msg, ToolMessage) and msg.content:
                 tool_results.append(msg.content)
             elif isinstance(msg, AIMessage) and msg.content:
-                last_thought = msg.content  # keep overwriting → last one wins
+                last_thought = msg.content
 
         step_output = ""
         if tool_results:
@@ -433,10 +360,7 @@ class PhysicsReactAgent:
         state["step_context"] = []
         return state
 
-    # ── Finalization ─────────────────────────────────────────────────
-
     def _finalize(self, state: State) -> State:
-        """Produce the final answer from accumulated step summaries."""
         msgs: List[AnyMessage] = [
             HumanMessage(content=f"# Problem\n{state['problem']}"),
         ]
@@ -445,22 +369,15 @@ class PhysicsReactAgent:
             msgs.append(HumanMessage(content=state["filtered_knowledge"]))
 
         if state["step_summaries"]:
-            summaries = "\n".join(
-                f"Step {i + 1}: {s}" for i, s in enumerate(state["step_summaries"])
-            )
+            summaries = "\n".join(f"Step {i + 1}: {s}" for i, s in enumerate(state["step_summaries"]))
             msgs.append(HumanMessage(content=f"# Step Results\n{summaries}"))
 
-        msgs.append(
-            HumanMessage(content=agent_cfg["finalizer_prompt"].format(problem=state["problem"]))
-        )
+        msgs.append(HumanMessage(content=agent_cfg["finalizer_prompt"].format(problem=state["problem"])))
         ai = self.base_llm.invoke(msgs)
         log.info(f"[FINALIZE] {ai.content}")
 
-        # store as the final message so solve() can return it
         state["step_context"] = [ai]
         return state
-
-    # ── Routing Functions ────────────────────────────────────────────
 
     def _route_plan(self, state: State) -> str:
         if state["plan"]:
@@ -473,16 +390,14 @@ class PhysicsReactAgent:
         return "fix_plan"
 
     def _route_step_type(self, state: State) -> str:
-        return state["problem_type"]   # "math" or "theory"
+        return state["problem_type"]
 
     def _route_step_thought(self, state: State) -> str:
-        """After a thought: STEP COMPLETE → summarize, else → act."""
         last = state["step_context"][-1] if state["step_context"] else None
         content = (last.content or "").upper() if last else ""
 
         if "STEP COMPLETE" in content:
-            # Guard: in math mode, do not allow STEP COMPLETE if no tool
-            # has been called yet (step_react_iter == 0 means no act phase ran).
+            # in math mode, forbid STEP COMPLETE before any tool has run
             if state["problem_type"] == "math" and state["step_react_iter"] == 0:
                 log.info(
                     f"[ROUTE_THOUGHT] Step {state['current_step'] + 1} said STEP COMPLETE "
@@ -495,22 +410,19 @@ class PhysicsReactAgent:
         return "act"
 
     def _route_step_act(self, state: State) -> str:
-        """After an action: tool executed → thought, no tool / max iters → summarize."""
         if state["step_react_iter"] >= agent_cfg["max_step_react_iters"]:
             log.info(f"[ROUTE_ACT] Max mini-react iters for step {state['current_step'] + 1}.")
             return "summarize"
 
-        # check if a tool was actually called (ToolMessage is last)
         last = state["step_context"][-1] if state["step_context"] else None
         if isinstance(last, ToolMessage):
-            log.info(f"[ROUTE_ACT] Tool result received → thought.")
+            log.info("[ROUTE_ACT] Tool result received → thought.")
             return "thought"
 
-        log.info(f"[ROUTE_ACT] No tool call → summarize.")
+        log.info("[ROUTE_ACT] No tool call → summarize.")
         return "summarize"
 
     def _route_next_step(self, state: State) -> str:
-        """After summarizing: more steps → continue, all done → finalize."""
         if state["current_step"] >= len(state["plan"]):
             log.info("[ROUTE_NEXT] All steps complete → finalize.")
             return "finalize"
@@ -520,14 +432,10 @@ class PhysicsReactAgent:
         log.info(f"[ROUTE_NEXT] Continuing to step {state['current_step'] + 1}.")
         return "continue"
 
-    # ── Helpers ───────────────────────────────────────────────────────
-
     @staticmethod
     def _parse_plan(text: str) -> List[str]:
         lines = re.findall(r"^\s*\d+\.\s*(.+)$", text, re.MULTILINE)
         return [line.strip() for line in lines if line.strip()]
-
-    # ── Public API ───────────────────────────────────────────────────
 
     def solve(self, problem: str) -> str:
         question, options = scieval_split_problem_and_options(full_text=problem)
@@ -551,12 +459,10 @@ class PhysicsReactAgent:
 
         final_state = self.graph.invoke(state, config={"recursion_limit": 200})
 
-        # the final answer is in step_context (set by _finalize)
         for msg in reversed(final_state.get("step_context", [])):
             if isinstance(msg, AIMessage):
                 return msg.content
 
-        # fallback: check step_summaries
         if final_state.get("step_summaries"):
             return final_state["step_summaries"][-1]
 

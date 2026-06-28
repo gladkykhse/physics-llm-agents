@@ -17,23 +17,15 @@
 # [tool.uv.extra-build-dependencies]
 # flash-attn = ["torch", "packaging", "setuptools", "wheel"]
 # ///
-"""Benchmark runner for OpenDFM/SciDFM-MoE-A5.6B-v1.0 on 3x A100-80GB GPUs (0-2).
-
-Model: 19B total / 5.6B active params, BF16, ~38 GB.
-Loaded once with device_map="auto" spread across GPUs 0-2 via CUDA_VISIBLE_DEVICES.
-No multiprocessing — trust_remote_code + spawn is incompatible.
-
-Run with:
-    uv run --python 3.11 run_scidfm_benchmark.py -b scieval
-    uv run --python 3.11 run_scidfm_benchmark.py -b mmlu -s college_physics
-    uv run --python 3.11 run_scidfm_benchmark.py -b scieval -p standard
+"""Benchmark runner for OpenDFM/SciDFM-MoE-A5.6B-v1.0 on physics datasets.
+Run with: uv run --python 3.11 run_scidfm_benchmark.py -b <benchmark>
 """
+
 import argparse
 import os
 from datetime import datetime
 
-# Restrict to GPUs 0-2 before any torch/CUDA import
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2")  # must precede torch import
 
 import datasets as hf_datasets
 import polars as pl
@@ -43,10 +35,6 @@ from transformers import AutoModelForCausalLM, LlamaTokenizer
 MODEL_ID = "OpenDFM/SciDFM-MoE-A5.6B-v1.0"
 OUTPUTS_DIR = "artifacts"
 CHAT_TEMPLATE = "<|user|>:{instruction}<|assistant|>:"
-
-# ---------------------------------------------------------------------------
-# Benchmark data loading
-# ---------------------------------------------------------------------------
 
 _NUM_TO_LETTER = {0: "A", 1: "B", 2: "C", 3: "D"}
 MMLU_SUBSETS = ["college_physics", "conceptual_physics", "high_school_physics"]
@@ -62,12 +50,8 @@ def _load_scieval(save_dir: str, topics: list[str], abilities: list[str]) -> pl.
     df = pl.read_ipc_stream(source=arrow).filter(pl.col("category") == "physics")
 
     agg_cols = [c for c in df.columns if c != "question"]
-    df = df.group_by("question", maintain_order=True).agg(
-        [pl.col(c).drop_nulls().first().alias(c) for c in agg_cols]
-    )
-    df = df.with_columns(
-        pl.col("question").str.strip_chars().str.strip_suffix("Answer:").str.strip_chars()
-    )
+    df = df.group_by("question", maintain_order=True).agg([pl.col(c).drop_nulls().first().alias(c) for c in agg_cols])
+    df = df.with_columns(pl.col("question").str.strip_chars().str.strip_suffix("Answer:").str.strip_chars())
     if topics:
         df = df.filter(pl.col("topic").is_in(topics))
     if abilities:
@@ -84,18 +68,16 @@ def _load_mmlu(save_dir: str, subset: str) -> pl.DataFrame:
     arrow = os.path.join(data_path, "test", "data-00000-of-00001.arrow")
     df = pl.read_ipc_stream(source=arrow)
     return df.with_columns(
-        pl.struct(["question", "choices"]).map_elements(
-            lambda r: r["question"] + "\n\n" + "".join(
-                f"{_NUM_TO_LETTER[i]}. {c}\n" for i, c in enumerate(r["choices"])
-            ),
+        pl.struct(["question", "choices"])
+        .map_elements(
+            lambda r: r["question"]
+            + "\n\n"
+            + "".join(f"{_NUM_TO_LETTER[i]}. {c}\n" for i, c in enumerate(r["choices"])),
             return_dtype=pl.String,
-        ).alias("question")
+        )
+        .alias("question")
     )
 
-
-# ---------------------------------------------------------------------------
-# System prompts
-# ---------------------------------------------------------------------------
 
 def _cot_system_prompt() -> str:
     return """You are an expert in physics, solving multiple-choice exam problems.
@@ -117,10 +99,6 @@ def _standard_system_prompt() -> str:
     Your answer should be a single letter A, B, C or D.
     Please directly give the answer without any explanation."""
 
-
-# ---------------------------------------------------------------------------
-# Inference
-# ---------------------------------------------------------------------------
 
 def run_completion(
     questions: list[str],
@@ -158,10 +136,6 @@ def run_completion(
     return pl.DataFrame({"question": questions, "answer_ai": results})
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=f"Benchmark {MODEL_ID} on physics datasets",
@@ -169,14 +143,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("-b", "--benchmark", default="scieval", choices=["scieval", "mmlu"])
     parser.add_argument("-p", "--prompt", default="cot", choices=["cot", "standard"])
-    parser.add_argument("-s", "--subset", default="college_physics", choices=MMLU_SUBSETS,
-                        help="MMLU subset (ignored for scieval)")
+    parser.add_argument(
+        "-s", "--subset", default="college_physics", choices=MMLU_SUBSETS, help="MMLU subset (ignored for scieval)"
+    )
     parser.add_argument("-t", "--topics", nargs="*", default=[], help="SciEval topic filter")
     parser.add_argument("-a", "--abilities", nargs="*", default=[], help="SciEval ability filter")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--max-new-tokens", type=int, default=2048)
-    parser.add_argument("--temperature", type=float, default=0.0,
-                        help="0.0 = greedy decoding (recommended for MCQ)")
+    parser.add_argument("--temperature", type=float, default=0.0, help="0.0 = greedy decoding (recommended for MCQ)")
     parser.add_argument("--benchmarks-dir", default="benchmarks")
     args = parser.parse_args()
 
@@ -228,4 +202,3 @@ if __name__ == "__main__":
     output_path = os.path.join(output_dir, f"{model_slug}_{prompt_fn.__name__[1:]}_{timestamp}.parquet")
     df.write_parquet(output_path)
     print(f"Results saved to {output_path}")
-    print(f"Evaluate with: python run_evaluation.py --benchmark {args.benchmark} --filename {output_path}")

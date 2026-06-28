@@ -35,12 +35,12 @@ async def run_completion(
         sys_prompts = [system_prompt] * len(all_requests)
 
     results: list[str] = []
-    client = AsyncClient()  # single shared client; no close() needed currently
+    client = AsyncClient()
     for i in range(0, len(all_requests), batch_size):
         reqs_batch = all_requests[i : i + batch_size]
         prompts_batch = sys_prompts[i : i + batch_size]
         tasks = [ollama_completion_request(client, req, sp, model=model) for req, sp in zip(reqs_batch, prompts_batch)]
-        answers = await asyncio.gather(*tasks)  # preserves order
+        answers = await asyncio.gather(*tasks)
         results.extend(answers)
 
     return pl.DataFrame({"question": all_requests, "answer_ai": results})

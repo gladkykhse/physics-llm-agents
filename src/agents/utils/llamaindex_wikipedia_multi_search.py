@@ -9,16 +9,13 @@ from llama_index.tools.wikipedia import WikipediaToolSpec
 
 log = logging.getLogger(__name__)
 
-wikipedia.set_user_agent(
-    "agent-wikipedia-baseline-eval/0.1 "
-    "(gladkykh.sviatoslav@gmail.com)"
-)
+wikipedia.set_user_agent("agent-wikipedia-baseline-eval/0.1 (gladkykh.sviatoslav@gmail.com)")
 wikipedia.set_rate_limiting(True, min_wait=timedelta(seconds=2))
 
 _wikipedia = WikipediaToolSpec()
 
 _MAX_RETRIES = 5
-_BACKOFF_BASE = 3.0  # seconds
+_BACKOFF_BASE = 3.0
 _MAX_RETRIEVAL_CHARS_PER_QUERY = 20_000
 
 
@@ -44,14 +41,10 @@ def _clip_retrieval(text: str) -> str:
     if len(text) <= _MAX_RETRIEVAL_CHARS_PER_QUERY:
         return text
 
-    return (
-        text[:_MAX_RETRIEVAL_CHARS_PER_QUERY].rstrip()
-        + "\n...[retrieval truncated]"
-    )
+    return text[:_MAX_RETRIEVAL_CHARS_PER_QUERY].rstrip() + "\n...[retrieval truncated]"
 
 
 def _run_single_query(query: str) -> str:
-    """Run a single Wikipedia query with retry for transient Wikipedia/API failures."""
     last_error = None
 
     for attempt in range(_MAX_RETRIES):
@@ -70,7 +63,7 @@ def _run_single_query(query: str) -> str:
                 raise
 
             if attempt < _MAX_RETRIES - 1:
-                delay = _BACKOFF_BASE * (2 ** attempt)
+                delay = _BACKOFF_BASE * (2**attempt)
                 log.warning(
                     "[LLAMAINDEX_WIKI_SEARCH] Transient Wikipedia failure for '%s' "
                     "(attempt %d/%d, retrying in %.1fs): %s",
@@ -100,7 +93,6 @@ def wikipedia_multi_search(queries: list[str]) -> str:
     succeeded = 0
     failed = 0
 
-    # Minimal safety: dedupe and cap queries, but keep same interface.
     seen = set()
     clean_queries = []
     for query in queries:

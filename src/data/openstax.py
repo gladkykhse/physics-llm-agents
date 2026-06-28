@@ -1,8 +1,8 @@
+import _io
 import os
 from copy import deepcopy
 from io import StringIO
 
-import _io
 from git import Repo
 from lxml import etree
 from mathml_to_latex.converter import MathMLToLaTeX
@@ -60,11 +60,7 @@ def raw_to_xml(raw_data_dir: str, output_dir: str) -> None:
     collections_dir = os.path.join(raw_data_dir, "collections")
     modules_dir = os.path.join(raw_data_dir, "modules")
 
-    collections = [
-        os.path.join(collections_dir, f)
-        for f in os.listdir(collections_dir)
-        if f.endswith(".xml")
-    ]
+    collections = [os.path.join(collections_dir, f) for f in os.listdir(collections_dir) if f.endswith(".xml")]
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -81,19 +77,15 @@ def _ancestor_count(el: etree._Element, local: str) -> int:
 
 
 def _render_inline(el: etree._Element, parse_cfg: dict[str, object]) -> str:
-    """Render inline content inside a <title> using existing handlers."""
     buf = StringIO()
-    # write any leading text
     if el.text and el.text.strip():
         buf.write(el.text.strip() + " ")
-    # walk children (emphasis, math, sub/sup, etc.)
     for ch in el:
         _walk_subtree(ch, buf, parse_cfg=parse_cfg)
-    return " ".join(buf.getvalue().split())  # collapse whitespace
+    return " ".join(buf.getvalue().split())
 
 
 def _next_element(node: etree._Element) -> etree._Element | None:
-    """Return the next element sibling (skip comments/PIs)."""
     sib = node.getnext()
     while sib is not None and not isinstance(sib.tag, str):
         sib = sib.getnext()
@@ -135,11 +127,13 @@ def _sub_handler(el: etree._Element, out: _io.TextIOWrapper) -> None:
     if el.tail and el.tail.strip():
         out.write(el.tail.strip() + " ")
 
+
 def _sup_handler(el: etree._Element, out: _io.TextIOWrapper) -> None:
     txt = ("".join(el.itertext()) or "").strip()
     out.write(f"^{{{txt}}}")
     if el.tail and el.tail.strip():
         out.write(el.tail.strip() + " ")
+
 
 def _emphasis_handler(el, out):
     effect = (el.get("effect") or "").strip().lower()
@@ -159,26 +153,19 @@ def _emphasis_handler(el, out):
 
 
 def _item_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[str, object]) -> None:
-    # start a new bullet on its own line
     out.write("\n- ")
-    # item text
     if el.text and el.text.strip():
         out.write(el.text.strip() + " ")
-    # keep nested markup (math, emphasis, sub/sup, etc.)
     for child in el:
         _walk_subtree(child, out, parse_cfg=parse_cfg)
-    # write tail right away so we don't lose punctuation/spacing
     if el.tail and el.tail.strip():
         out.write(el.tail.strip() + " ")
 
 
 def _list_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[str, object]) -> None:
-    # blank line before the list block
     for child in el:
         _walk_subtree(child, out, parse_cfg=parse_cfg)
-    # newline after the list block
     out.write("\n")
-    # keep tail text (e.g., paragraph continues)
     if el.tail and el.tail.strip():
         out.write(el.tail.strip() + " ")
 
@@ -196,7 +183,6 @@ def _title_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[s
     D = _ancestor_count(el, "document")
     T = _ancestor_count(el, "section")
 
-    # Compute pure hierarchical level
     if parent_local == "subcollection":
         level = S
     elif parent_local == "document":
@@ -204,8 +190,6 @@ def _title_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[s
     elif parent_local == "section":
         level = S + 1 + T
     else:
-        # Fallback: use a conservative pure-hierarchy estimate
-        # (rare tags; keep monotonicity with structure)
         level = S + (1 if D > 0 else 0) + T
 
     level = _clamp(level)
@@ -244,20 +228,15 @@ def _newline_handler(el: etree._Element, out: _io.TextIOWrapper) -> None:
 
 
 def _para_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[str, object]) -> None:
-    # blank line before paragraph
     out.write("\n")
-    # paragraph text (before children)
     if el.text and el.text.strip():
         out.write(el.text.strip() + " ")
-    # inline content inside the paragraph
     for child in el:
         _walk_subtree(child, out, parse_cfg=parse_cfg)
-    # newline after paragraph
     out.write("\n")
 
 
 def _exercise_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[str, object]) -> None:
-    # blank line before the exercise block
     out.write("\n")
 
     for child in el:
@@ -268,16 +247,15 @@ def _exercise_handler(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dic
                 out.write(child.text.strip() + " ")
             for ch in child:
                 _walk_subtree(ch, out, parse_cfg=parse_cfg)
-            out.write("\n")  # end of problem
+            out.write("\n")
         elif ln == "solution":
             out.write("Solution:\n")
             if child.text and child.text.strip():
                 out.write(child.text.strip() + " ")
             for ch in child:
                 _walk_subtree(ch, out, parse_cfg=parse_cfg)
-            out.write("\n")  # end of solution
+            out.write("\n")
 
-    # optional blank line after the exercise block (keeps things airy)
     out.write("\n")
 
 
@@ -311,7 +289,6 @@ def _walk_subtree(el: etree._Element, out: _io.TextIOWrapper, parse_cfg: dict[st
         skip_tags = set(parse_cfg.get("ignore_title", set()))
         sib = _next_element(el)
         if sib is not None and _localname(sib.tag) in skip_tags:
-            # Don’t render the title; still preserve tail spacing if any
             _default_tail_handler(el, out, newline=False)
             return
 

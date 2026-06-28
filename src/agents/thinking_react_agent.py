@@ -2,15 +2,13 @@ import json
 import logging as log
 from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import (AIMessage, HumanMessage, SystemMessage,
-                                     ToolMessage)
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agents.utils.llm import make_llm
-from src.agents.utils.tools import (sympy_eval, sympy_solve, vector_math,
-                                    wikipedia_search)
+from src.agents.utils.tools import sympy_eval, sympy_solve, vector_math, wikipedia_search
 from src.agents.utils.utils import scieval_split_problem_and_options
 from src.utils.helpers import load_yaml
 

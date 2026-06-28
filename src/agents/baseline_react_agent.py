@@ -23,17 +23,6 @@ class State(TypedDict):
 
 
 class PhysicsReactAgent:
-    """
-    Vanilla ReAct agent — the standard LangGraph pattern.
-
-    Differences from the custom PhysicsReactAgent:
-    - Single 'agent' node (no separate thought / act phases)
-    - No tool-call deduplication / memory
-    - No thought_skip_tool bypass
-    - Standard two-branch routing: tool_calls → tools, else → finalize
-    - System prompt provides tool docs but no phased reasoning instructions
-    """
-
     def __init__(self) -> None:
         tools_list = [sympy_eval, vector_math, sympy_solve]
 
@@ -58,10 +47,7 @@ class PhysicsReactAgent:
 
         self.graph = graph.compile()
 
-    # ------------------------------------------------------------------ nodes
-
     def _agent(self, state: State) -> State:
-        """Single LLM call with tools bound — the standard ReAct step."""
         ai = self.llm.invoke(state["messages"])
 
         tool_calls = getattr(ai, "tool_calls", None)
@@ -78,15 +64,12 @@ class PhysicsReactAgent:
         return state
 
     def _finalize(self, state: State) -> State:
-        """Ask the LLM (without tools) to produce a final formatted answer."""
         prompt_content = agent_cfg["finalizer_prompt"].format(problem=state["problem"])
         messages = state["messages"] + [HumanMessage(content=prompt_content)]
         ai = self.base_llm.invoke(messages)
         log.info(f"[FINALIZE] {ai.content[:200]}")
         state["messages"] = [ai]
         return state
-
-    # --------------------------------------------------------------- routing
 
     def _route(self, state: State) -> str:
         if state["react_iter"] >= agent_cfg["max_react_iters"]:
@@ -102,8 +85,6 @@ class PhysicsReactAgent:
 
         log.info("[ROUTE] No tool calls → finalize")
         return "finalize"
-
-    # --------------------------------------------------------------- public API
 
     def solve(self, problem: str) -> str:
         question, options = scieval_split_problem_and_options(full_text=problem)

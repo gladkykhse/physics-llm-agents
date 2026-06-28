@@ -171,15 +171,6 @@ finalizer_prompt: |
   The VERY LAST line of the response must state exactly the correct answer choice in the following format:
   Answer: <A|B|C|D>
 
-tools_overview: |
-  TOOLS OVERVIEW
-  1. retrieve_physics_theory(query: str) -> str
-     Purpose: retrieve short theory passages from a physics textbook via semantic similarity search, to support conceptual reasoning.
-     Contains: definitions, physical laws and principles, fundamental equations and constants, standard formulas, conceptual explanations, etc.
-     Does NOT contain: worked examples or numeric solutions, step-by-step procedures, problem- or scenario-specific guidance
-     Query rules: use short, general physics concepts only, no numbers, coordinates, vectors, or problem values, no full sentences or plan-step descriptions
-     Usage notes: reformulate the query if results are weak, if repeated attempts fail, assume the textbook lacks the info and continue using your own knowledge
-
 max_react_iters: 7
 
 max_plan_attempts: 5

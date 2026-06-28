@@ -2,8 +2,7 @@ import logging as log
 import re
 from typing import Annotated, List, TypedDict
 
-from langchain_core.messages import (AIMessage, HumanMessage, SystemMessage,
-                                     ToolMessage)
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.prebuilt import ToolNode
@@ -19,25 +18,20 @@ log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 
 
 class State(TypedDict):
-    # Fixed inputs
     problem: str
     # options: str
 
-    # Loop control
     retrieval_iter: int
     previous_queries: List[str]
 
-    # Per-iteration working fields (overwritten each round)
     retrieval_plan: str
     knowledge_messages: List[AnyMessage]  # managed manually, no add_messages reducer
     raw_retrieved: str
     filtered_this_round: str
     sufficiency_verdict: str
 
-    # Accumulated across iterations
     accumulated_knowledge: str
 
-    # Final solver context
     messages: Annotated[List[AnyMessage], add_messages]
 
 
@@ -51,7 +45,6 @@ class PhysicsReactAgent:
         graph = StateGraph(State)
         self.knowledge_tools = ToolNode(knowledge_tools_list, messages_key="knowledge_messages")
 
-        # ── Nodes ────────────────────────────────────────────
         graph.add_node("plan_retrieval", self._plan_retrieval)
         graph.add_node("generate_tool_call", self._generate_tool_call)
         graph.add_node("knowledge_tools", self.knowledge_tools)
@@ -61,7 +54,6 @@ class PhysicsReactAgent:
         graph.add_node("consolidate_knowledge", self._consolidate_knowledge)
         graph.add_node("solve_problem", self._solve_problem)
 
-        # ── Edges ────────────────────────────────────────────
         graph.set_entry_point("plan_retrieval")
         graph.add_edge("plan_retrieval", "generate_tool_call")
         graph.add_conditional_edges(
@@ -69,7 +61,7 @@ class PhysicsReactAgent:
             self._has_tool_calls,
             {
                 "has_tools": "knowledge_tools",
-                "no_tools": "extract_raw_results",  # skip tool execution gracefully
+                "no_tools": "extract_raw_results",
             },
         )
         graph.add_edge("knowledge_tools", "extract_raw_results")
@@ -88,10 +80,7 @@ class PhysicsReactAgent:
 
         self.graph = graph.compile()
 
-    # ── Routing Logic ────────────────────────────────────────
-
     def _has_tool_calls(self, state: State) -> str:
-        """Routes based on whether the LLM produced valid tool calls."""
         msgs = state.get("knowledge_messages", [])
         if msgs:
             last_msg = msgs[-1]
@@ -120,8 +109,6 @@ class PhysicsReactAgent:
         )
         return "continue"
 
-    # ── Node: Plan Retrieval ─────────────────────────────────
-
     def _plan_retrieval(self, state: State) -> State:
         current_iter = state.get("retrieval_iter", 0)
 
@@ -144,15 +131,12 @@ class PhysicsReactAgent:
 
         state["retrieval_plan"] = ai.content
 
-        # Parse queries from the plan and track them
         new_queries = self._parse_queries(ai.content)
         prev = state.get("previous_queries", [])
         state["previous_queries"] = prev + new_queries
         log.info(f"[PLAN_RETRIEVAL] - Parsed queries: {new_queries}")
 
         return state
-
-    # ── Node: Generate Tool Call ─────────────────────────────
 
     def _generate_tool_call(self, state: State) -> State:
         prompt_text = agent_cfg["generate_tool_call_prompt"].format(
@@ -168,19 +152,10 @@ class PhysicsReactAgent:
         else:
             log.warning("[GENERATE_TOOL_CALL] - No tool calls generated. Solver will work with existing knowledge.")
 
-        # Overwrite knowledge_messages — this is a disposable interface for ToolNode
         state["knowledge_messages"] = [ai]
         return state
 
-    # ── Node: Extract Raw Results ────────────────────────────
-
     def _extract_raw_results(self, state: State) -> State:
-        """
-        Extracts raw text from ToolMessages produced by ToolNode and stores it
-        in raw_retrieved. Without add_messages reducer, knowledge_messages is
-        fully overwritten each iteration — it contains only the current round's
-        ToolMessages after ToolNode runs.
-        """
         raw_parts = []
         for msg in state.get("knowledge_messages", []):
             if isinstance(msg, ToolMessage):
@@ -197,8 +172,6 @@ class PhysicsReactAgent:
         state["raw_retrieved"] = raw_text
         return state
 
-    # ── Node: Filter Knowledge ───────────────────────────────
-
     def _filter_knowledge(self, state: State) -> State:
         prompt_text = agent_cfg["filter_knowledge_prompt"].format(
             problem=state["problem"],
@@ -211,7 +184,6 @@ class PhysicsReactAgent:
         filtered = ai.content
         state["filtered_this_round"] = filtered
 
-        # Append to accumulated knowledge with round label
         current_iter = state.get("retrieval_iter", 0) + 1
         accumulated = state.get("accumulated_knowledge", "")
         separator = (
@@ -222,8 +194,6 @@ class PhysicsReactAgent:
         log.info(f"[FILTER_KNOWLEDGE] - Accumulated knowledge now {len(state['accumulated_knowledge'])} chars.")
 
         return state
-
-    # ── Node: Check Sufficiency ──────────────────────────────
 
     def _check_sufficiency(self, state: State) -> State:
         prompt_text = agent_cfg["sufficiency_check_prompt"].format(
@@ -240,12 +210,9 @@ class PhysicsReactAgent:
 
         return state
 
-    # ── Node: Consolidate Knowledge ──────────────────────────
-
     def _consolidate_knowledge(self, state: State) -> State:
         accumulated = state.get("accumulated_knowledge", "")
 
-        # If only one retrieval round happened, skip consolidation LLM call
         if state.get("retrieval_iter", 1) <= 1:
             log.info("[CONSOLIDATE] - Single retrieval round. Skipping consolidation LLM call.")
             consolidated = accumulated
@@ -259,15 +226,12 @@ class PhysicsReactAgent:
             consolidated = ai.content
             log.info(f"[CONSOLIDATE] - Output: {consolidated}")
 
-        # Set up messages for the solver — clean context with only what it needs
         state["messages"] = [
             SystemMessage(content=agent_cfg["main_system_prompt"]),
             AIMessage(content=consolidated),
         ]
 
         return state
-
-    # ── Node: Solve Problem ──────────────────────────────────
 
     def _solve_problem(self, state: State) -> State:
         prompt_text = agent_cfg["solve_prompt"].format(
@@ -282,19 +246,8 @@ class PhysicsReactAgent:
         state["messages"] = [ai]
         return state
 
-    # ── Utility ──────────────────────────────────────────────
-
     @staticmethod
     def _parse_queries(plan_text: str) -> list[str]:
-        """
-        Extracts queries from a numbered list under '### Search Queries'.
-        Expected format:
-            ### Search Queries
-            1. Projectile motion maximum height formula
-            2. Standard acceleration due to gravity value
-        Falls back to empty list if the format is not found.
-        """
-        # Find the "Search Queries" section
         section_match = re.search(r"###\s*Search Queries\s*\n(.*)", plan_text, re.DOTALL | re.IGNORECASE)
         if not section_match:
             log.warning("[PARSE_QUERIES] - Could not find '### Search Queries' section. Returning empty list.")
@@ -302,7 +255,6 @@ class PhysicsReactAgent:
 
         section_text = section_match.group(1)
 
-        # Extract numbered items (e.g., "1. query text", "2. query text")
         queries = re.findall(r"^\s*\d+\.\s*(.+)$", section_text, re.MULTILINE)
         queries = [q.strip().strip('"').strip("'") for q in queries if q.strip()]
 
@@ -310,8 +262,6 @@ class PhysicsReactAgent:
             log.warning("[PARSE_QUERIES] - Found section but no numbered queries inside. Returning empty list.")
 
         return queries
-
-    # ── Public API ───────────────────────────────────────────
 
     def solve(self, problem: str) -> str:
         question, options = scieval_split_problem_and_options(full_text=problem)

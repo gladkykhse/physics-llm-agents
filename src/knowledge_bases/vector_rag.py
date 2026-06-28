@@ -13,7 +13,7 @@ from src.utils.helpers import read_file
 
 nltk.download("punkt", quiet=True)
 nltk.download("punkt_tab", quiet=True)
-from nltk.tokenize import sent_tokenize
+from nltk.tokenize import sent_tokenize  # noqa: E402
 
 
 def tok_len(tokenizer: PreTrainedTokenizer, text: str) -> int:
@@ -164,7 +164,7 @@ def merge_small_chunks(chunks: List[str], tokenizer: PreTrainedTokenizer, max_to
     current = chunks[0]
 
     for nxt in chunks[1:]:
-        candidate = current + nxt  # exact boundary (no added whitespace)
+        candidate = current + nxt
         if tok_len(tokenizer, candidate) <= max_token_len:
             current = candidate
         else:

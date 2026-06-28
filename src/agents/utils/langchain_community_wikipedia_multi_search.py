@@ -4,16 +4,13 @@ import time
 from datetime import timedelta
 
 import wikipedia
-from langchain_core.tools import tool
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_core.tools import tool
 
 log = logging.getLogger(__name__)
 
-wikipedia.set_user_agent(
-    "agent-wikipedia-baseline-eval/0.1 "
-    "(gladkykh.sviatoslav@gmail.com)"
-)
+wikipedia.set_user_agent("agent-wikipedia-baseline-eval/0.1 (gladkykh.sviatoslav@gmail.com)")
 wikipedia.set_rate_limiting(True, min_wait=timedelta(seconds=2))
 
 _wikipedia = WikipediaQueryRun(
@@ -24,7 +21,7 @@ _wikipedia = WikipediaQueryRun(
 )
 
 _MAX_RETRIES = 5
-_BACKOFF_BASE = 3.0  # seconds
+_BACKOFF_BASE = 3.0
 
 
 def _is_retryable_error(e: Exception) -> bool:
@@ -44,7 +41,6 @@ def _is_retryable_error(e: Exception) -> bool:
 
 
 def _run_single_query(query: str) -> str:
-    """Run a single Wikipedia query with retry for transient Wikipedia/API failures."""
     last_error = None
 
     for attempt in range(_MAX_RETRIES):
@@ -63,7 +59,7 @@ def _run_single_query(query: str) -> str:
                 raise
 
             if attempt < _MAX_RETRIES - 1:
-                delay = _BACKOFF_BASE * (2 ** attempt)
+                delay = _BACKOFF_BASE * (2**attempt)
                 log.warning(
                     "[LANGCHAIN_WIKI_SEARCH] Transient Wikipedia failure for '%s' "
                     "(attempt %d/%d, retrying in %.1fs): %s",
@@ -93,7 +89,6 @@ def wikipedia_multi_search(queries: list[str]) -> str:
     succeeded = 0
     failed = 0
 
-    # Minimal safety: dedupe and cap queries, but keep same interface.
     seen = set()
     clean_queries = []
     for query in queries:

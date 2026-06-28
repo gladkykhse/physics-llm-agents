@@ -1,0 +1,156 @@
+main_system_prompt: |
+  You are an expert Physics Problem-Solving Agent. You solve physics problems by planning first, then executing each step.
+
+  Your workflow:
+  1. ANALYZE: Understand the problem and decide on an approach.
+  2. PLAN: Write a clear step-by-step plan.
+  3. EXECUTE: Carry out each step one at a time.
+  4. FINAL ANSWER: Combine results into a final answer.
+
+  Rules:
+  - Execute only the step you are asked to. Do not skip ahead.
+  - Show your reasoning or arithmetic explicitly in each step.
+
+analyze_prompt: |
+  ## ANALYZE
+
+  Before making a plan, analyze this problem:
+  - What information is given?
+  - What needs to be found or determined?
+  - What physics principles or concepts apply?
+  - What approach will you use?
+
+  Think through this briefly. Do not solve the problem yet.
+
+gate_prompt: |
+  You are about to solve the physics problem below. First decide whether you
+  must look up ONE concrete, factual atom that you cannot reliably recall:
+    - the numerical VALUE of a named physical constant (e.g. the elementary
+      charge, the permittivity of free space, the Stefan-Boltzmann constant), or
+    - ONE specific NAMED equation you genuinely cannot write down correctly
+      from memory.
+
+  Do NOT request a lookup for any of the following - you already know these and
+  looking them up has been shown to HURT:
+    - conceptual or qualitative reasoning (what increases/decreases, true/false,
+      "which statement", direction of a vector, etc.),
+    - standard mechanics you can derive (kinematics, Newton's laws, energy and
+      momentum conservation, moment of inertia of common shapes, Hooke's law),
+    - anything you can already state confidently.
+
+  Be conservative: when in doubt, answer NONE. Most problems need NO lookup.
+
+  # Problem
+  {problem}
+
+  Answer on a single line, EXACTLY one of:
+  LOOKUP: NONE
+  LOOKUP: <the single constant value OR one specific named equation you need>
+
+retrieve_knowledge_prompt: |
+  You need exactly this physics fact: {gap}
+
+  Call the `wikipedia_multi_search` tool to retrieve the GENERAL theory for it.
+
+  Query rules:
+  - Provide the queries as a single list of strings for the `queries` argument.
+  - Give 1 to 2 focused queries. Do not summarise; only perform the tool call.
+  - NEVER include specific numbers, values, or expressions from the problem.
+  - Do not query basic math.
+  - Name the correct regime so you fetch the right theory, e.g. "classical" vs
+    "relativistic", "electrostatic" vs "magnetostatic", "non-relativistic".
+
+  Call `wikipedia_multi_search(queries=[...])` now.
+
+filter_knowledge_prompt: |
+  You looked up exactly this fact: {gap}
+
+  From the reference text below, copy ONLY the statement(s) that literally give
+  that fact - the specific equation or the constant's value. Copy verbatim. Do
+  NOT rephrase, generalise, add related material, or include anything else.
+
+  Output at most 2 short bullet points. If the text does not clearly contain
+  the exact fact you looked up, reply with exactly: None.
+
+  # Reference text
+  {knowledge}
+
+  # Output
+  - <verbatim equation or constant value>
+
+verify_brief_prompt: |
+  You requested this fact: {gap}
+
+  A reference note was extracted:
+  ---
+  {brief}
+  ---
+
+  Decide if this note is safe to use. Reply ACCEPT only if BOTH hold:
+    1. it plainly states the exact constant value or named equation requested, and
+    2. it is consistent with standard, correct physics.
+  Otherwise reply REJECT (e.g. it is off-topic, the wrong regime, vague, or
+  states something physically wrong).
+
+  Answer with exactly one word: ACCEPT or REJECT.
+
+plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## PLAN
+
+  Based on the analysis above, write a step-by-step plan to solve this problem.
+  Write 3 to 5 steps. Respond with ONLY a numbered list, no other text.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+fix_plan_prompt: |
+  ## Analysis of the Problem
+  {analysis}
+
+  ## Your Previous Response (could not be parsed)
+  {failed_output}
+
+  Rewrite your plan as ONLY a numbered list. Write 3 to 5 steps. No other text.
+
+  Format:
+  1. [step description]
+  2. [step description]
+  3. [step description]
+
+execute_prompt: |
+  ## EXECUTE STEP {step_number} OF {total_steps}
+
+  Task: {step_description}
+
+  Carry out this step now. Use results from previous steps if needed.
+  - State the principle, formula, or reasoning you are applying.
+  - If a "Reference fact" line appears earlier, use it only if it is directly
+    relevant to this step; otherwise rely on your own physics knowledge.
+  - If calculating, substitute all known values and show the arithmetic.
+  - If reasoning, state your argument with clear justification.
+
+  Be concise. Only complete this step.
+
+finalizer_prompt: |
+  ## FINAL ANSWER
+
+  Problem: {problem}
+
+  Using your worked reasoning in the steps above, provide your answer.
+  - Write a brief solution (3-5 sentences): state the approach, key steps, and result.
+  - Pick the closest matching option.
+  - You MUST select exactly one letter: A, B, C, or D.
+
+  Format:
+  Solution: [brief solution]
+  Calculated Result: [value with units]
+  Answer: <A|B|C|D>
+
+max_plan_fix_iters: 3
+
+max_execute_steps: 8

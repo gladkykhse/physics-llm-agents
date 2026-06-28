@@ -1,5 +1,3 @@
-benchmarks_dir: benchmarks/
-
 outputs_dir: artifacts/
 
 openai_models:

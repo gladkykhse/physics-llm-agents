@@ -22,7 +22,6 @@ class State(TypedDict):
     plan_step: int
     react_iter: int
 
-    # Planner fields
     plan_attempts: int
     plan_messages: Annotated[List[AnyMessage], add_messages]
     plan_last_raw: str
@@ -31,17 +30,13 @@ class State(TypedDict):
 
 class COTPhysicsAgent:
     def __init__(self):
-        # LLMs
         self.base_llm = make_llm()
         self.tools_llm = make_llm().bind_tools([retriever])
 
-        # Tool Nodes
         self._tool_node = ToolNode([retriever])
 
-        # Graph
         graph = StateGraph(State)
 
-        # Graph Nodes
         graph.add_node("cot_plan", self._cot_plan)
         graph.add_node("plan", self._plan)
         graph.add_node("convert", self._convert)
@@ -52,7 +47,6 @@ class COTPhysicsAgent:
         graph.add_node("reflect", self._reflect)
         graph.add_node("finalize", self._finalize)
 
-        # Graph Edges
         graph.set_entry_point("cot_plan")
         graph.add_edge("cot_plan", "plan")
         graph.add_edge("plan", "convert")

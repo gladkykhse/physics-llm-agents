@@ -1,9 +1,3 @@
-# ─────────────────────────────────────────────────────────────
-#  Combined Agent: Planning + Knowledge Retrieval + Math Tools
-# ─────────────────────────────────────────────────────────────
-
-# ── Knowledge Retrieval ──────────────────────────────────────
-
 cot_retrieve_knowledge_prompt: |
   Your task is to analyze a physics problem and generate search queries to retrieve relevant theory and formulas from Wikipedia.
 
@@ -64,8 +58,6 @@ filter_knowledge_prompt: |
   ## Relevant conditions and assumptions
   - Copy exact conditions or special cases from the document
 
-# ── Classification ───────────────────────────────────────────
-
 problem_type_router_prompt: |
   Classify this physics problem into one of two categories.
 
@@ -86,8 +78,6 @@ problem_type_router_prompt: |
   First, in one sentence state what the problem asks you to DO: compute a result from numerical inputs, or recall/reason about a concept? Then on a new line output exactly one of:
   ANSWER: MATHEMATICAL
   ANSWER: THEORETICAL
-
-# ── Analysis & Planning ──────────────────────────────────────
 
 analyze_prompt: |
   ## ANALYZE
@@ -146,8 +136,6 @@ fix_plan_prompt: |
   2. [step description]
   3. [step description]
 
-# ── System Prompts ───────────────────────────────────────────
-
 theory_system_prompt: |
   You are an expert physics problem-solving AI. You solve physics problems step by step using retrieved knowledge when relevant and your own physics knowledge when it is not. Be direct and structured.
 
@@ -179,8 +167,6 @@ math_system_prompt: |
   - One tool call per turn. Check the result before proceeding.
   - If a step needs no computation, reason through it without calling tools.
 
-# ── Theory Step Execution ────────────────────────────────────
-
 execute_theory_step_prompt: |
   ## EXECUTE STEP {step_number} OF {total_steps}
 
@@ -192,8 +178,6 @@ execute_theory_step_prompt: |
   - Use results from completed steps and the Wikipedia Search Results if relevant.
 
   Be concise. Only complete this step.
-
-# ── Math Mini-ReAct ──────────────────────────────────────────
 
 step_thought_prompt: |
   ## STEP {step_number} OF {total_steps}: {step_description}
@@ -226,8 +210,6 @@ step_thought_prompt: |
 step_act_prompt: |
   Now call exactly ONE tool to execute the computation you described. If the expression contains any variables, substitute their numeric values first.
 
-# ── Step Summarization ───────────────────────────────────────
-
 summarize_step_prompt: |
   The task for step {step_number} was: {step_description}
 
@@ -238,8 +220,6 @@ summarize_step_prompt: |
   "Step {step_number} result: [quantity from task] = [numeric value] [units]."
 
   IMPORTANT: Only report the value that directly answers the task. Ignore any extra computations beyond the task.
-
-# ── Finalization ─────────────────────────────────────────────
 
 finalizer_prompt: |
   ## FINAL ANSWER
@@ -255,8 +235,6 @@ finalizer_prompt: |
   Solution: [brief solution]
   Calculated Result: [value with units]
   Answer: <A|B|C|D>
-
-# ── Limits ───────────────────────────────────────────────────
 
 max_plan_fix_iters: 3
 max_step_react_iters: 3

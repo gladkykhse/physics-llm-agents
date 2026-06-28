@@ -88,10 +88,8 @@ def retrieve_physics_theory(query: str) -> str:
 
 
 def has_plain_text(expr: str) -> bool:
-    # Words like "velocity", "distance", "find"
     matches = re.findall(r"\s[a-zA-Z]{3,}\s", expr)
 
-    # Allow a small whitelist of math words
     allowed = {"sin", "cos", "tan", "log", "exp", "sqrt", "abs", "pi"}
 
     for m in matches:
@@ -100,11 +98,17 @@ def has_plain_text(expr: str) -> bool:
     return False
 
 
+def _normalize_math(expr: str) -> str:
+    expr = expr.replace("sympy.", "").replace("sp.", "").replace("math.", "").replace("np.", "").replace("numpy.", "")
+    expr = expr.replace("×", "*").replace("·", "*").replace("÷", "/")
+    expr = expr.replace("^", "**")
+    expr = re.sub(r"(?<![A-Za-z])π", "pi", expr)
+    expr = re.sub(r"√\s*\(", "sqrt(", expr)
+    expr = re.sub(r"√\s*([0-9.]+)", r"sqrt(\1)", expr)
+    return expr.strip()
+
+
 def fix_integrate_syntax(expr: str) -> str:
-    """
-    Converts integrate(expr, var, lo, hi) to integrate(expr, (var, lo, hi))
-    which is the correct SymPy syntax for definite integrals.
-    """
     pattern = r"integrate\((.+?),\s*([a-zA-Z_]\w*)\s*,\s*([^,]+?)\s*,\s*([^)]+?)\)"
     replacement = r"integrate(\1, (\2, \3, \4))"
     return re.sub(pattern, replacement, expr)
@@ -122,20 +126,13 @@ def sympy_eval(expression: str) -> str:
         str: The calculated numerical value.
     """
     if has_plain_text(expression):
-        return (
-            "Invalid expression: contains plain text. "
-            "Provide only a mathematical numerical expression."
-        )
+        return "Invalid expression: contains plain text. Provide only a mathematical numerical expression."
 
-    expression = (
-        expression
-        .replace("sympy.", "")
-        .replace("sp.", "")
-        .replace("math.", "")
-        .replace("np.", "")
-        .replace("numpy.", "")
-        .strip()
-    )
+    expression = _normalize_math(expression)
+    # keep only the RHS of an "x = <expr>" assignment
+    _assign = re.match(r"^[A-Za-z_]\w*\s*=\s*(.+)$", expression)
+    if _assign and expression.count("=") == 1:
+        expression = _assign.group(1).strip()
     expression = fix_integrate_syntax(expression)
     try:
         expr = sp.sympify(expression)
@@ -194,10 +191,7 @@ def vector_math(operation: str, v1: str, v2: Optional[str] = None, scalar: Optio
         v2 = v2.replace("<", "[").replace(">", "]")
 
     if has_plain_text(v1) or (v2 and has_plain_text(v2)) or (scalar and has_plain_text(scalar)):
-        return (
-            "Invalid vector input: contains plain text. "
-            "Vectors must be numeric lists like [1, 2, 3]."
-        )
+        return "Invalid vector input: contains plain text. Vectors must be numeric lists like [1, 2, 3]."
 
     safe_dict = {
         "math": math,
@@ -216,14 +210,11 @@ def vector_math(operation: str, v1: str, v2: Optional[str] = None, scalar: Optio
     }
 
     try:
-        # 1. Parse v1 (Mandatory)
-        # Pass safe_dict as both globals and locals to ensure access
         vec1 = eval(v1, safe_dict, safe_dict)
         if not isinstance(vec1, (list, tuple)):
             return f"Error: v1 must be a list, got {type(vec1)}"
         a = np.array(vec1, dtype=float)
 
-        # 2. Parse v2 (Optional)
         b = None
         if v2 and v2.strip().lower() != "none":
             vec2 = eval(v2, safe_dict, safe_dict)
@@ -231,7 +222,6 @@ def vector_math(operation: str, v1: str, v2: Optional[str] = None, scalar: Optio
                 return f"Error: v2 must be a list, got {type(vec2)}"
             b = np.array(vec2, dtype=float)
 
-        # 3. Parse scalar (Optional)
         s_val = None
         if scalar and str(scalar).strip().lower() != "none":
             s_val = eval(scalar, safe_dict, safe_dict)
@@ -248,7 +238,6 @@ def vector_math(operation: str, v1: str, v2: Optional[str] = None, scalar: Optio
             if b is not None and len(a) != len(b):
                 return f"Error: vectors must have the same dimension, got {len(a)} and {len(b)}."
 
-        # 4. Perform Operations
         res = ""
         if operation == "magnitude":
             if b is not None:
@@ -280,10 +269,7 @@ def vector_math(operation: str, v1: str, v2: Optional[str] = None, scalar: Optio
                 angle_rad = np.arccos(np.clip(cos_theta, -1.0, 1.0))
                 res = str(np.degrees(angle_rad))
         else:
-            res = (
-                f"Error: Unknown operation '{operation}'. "
-                f"Allowed operations are: {allowed_ops}."
-            )
+            res = f"Error: Unknown operation '{operation}'. Allowed operations are: {allowed_ops}."
 
         log.info(f"[VECTOR_MATH] - Result: {res}")
         return res
@@ -312,31 +298,18 @@ def sympy_solve(equation: str, symbol: Optional[str] = None) -> str:
         )
 
     try:
-        # 1. Preprocessing: Handle common syntax issues
-        # equation = equation.replace("sympy.", "").replace("sp.", "").replace("math.", "")
-        raw_eq = (
-            equation
-            .replace("^", "**")
-            .replace("sympy.", "")
-            .replace("sp.", "")
-            .replace("math.", "")
-            .replace("np.", "")
-            .replace("numpy.", "")
-            .replace("==", "=")
-            .strip()
-        )
+        # normalize but keep '=' since an equation is required here
+        raw_eq = _normalize_math(equation).replace("==", "=").strip()
 
         if symbol:
             symbol = symbol.strip()
 
-        # 2. Parse the Equation (Handle "=")
         if "=" in raw_eq:
             lhs_str, rhs_str = raw_eq.split("=", 1)
             lhs = sp.sympify(lhs_str)
             rhs = sp.sympify(rhs_str)
             eq_obj = sp.Eq(lhs, rhs)
         else:
-            # If no '=', assume expression equals zero (e.g. "x**2 - 4")
             eq_obj = sp.sympify(raw_eq)
 
         free_syms = eq_obj.free_symbols
@@ -357,18 +330,15 @@ def sympy_solve(equation: str, symbol: Optional[str] = None) -> str:
                     "If this is a direct numerical calculation, use sympy_eval instead."
                 )
 
-        # 3. Identify the Symbol
         if symbol:
             sym_obj = sp.Symbol(symbol)
         else:
-            # Auto-detect symbol if only one free symbol exists
             free_syms = eq_obj.free_symbols
             if len(free_syms) == 1:
                 sym_obj = list(free_syms)[0]
             else:
                 return f"Error: The equation has multiple variables {free_syms}. Please specify which 'symbol' to solve for."
 
-        # 4. Solve
         solutions = sp.solve(eq_obj, sym_obj)
 
         if len(solutions) == 0:
@@ -377,7 +347,6 @@ def sympy_solve(equation: str, symbol: Optional[str] = None) -> str:
                 "Check whether the equation is written correctly and whether you used sympy_solve for the right unknown."
             )
 
-        # 5. Format Output
         formatted_sols = []
         for sol in solutions:
             try:

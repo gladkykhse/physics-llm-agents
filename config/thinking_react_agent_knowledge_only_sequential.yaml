@@ -76,20 +76,3 @@ solve_prompt: |
   ---
   **Problem:**
   {problem}
-
-#solve_prompt: |
-#  Solve the following physics problem. You must base your physical principles and equations on the theoretical knowledge provided in the previous Wikipedia Search Results.
-#
-#  Use the exact structure below for your response. Do not deviate from this format.
-#
-#  **1. Knowns:** List all given variables. Convert them to standard SI units immediately.
-#  **2. Unknowns:** State exactly what variable(s) need to be calculated.
-#  **3. Retrieved Principles:** Explicitly state the physical laws and specific formulas required, referencing the provided Wikipedia knowledge.
-#  **4. Step-by-Step Derivation:** Perform the algebraic isolation of the unknown variable before plugging in any numerical values. Then, show the numerical calculation step-by-step.
-#  **5. Option Evaluation:** Compare your calculated final value to the provided multiple-choice options and select the closest match.
-#  **6. Final Answer:** You must end your entire response with exactly this format, replacing the bracketed letter with the correct choice:
-#  Answer: <A|B|C|D>
-#
-#  ---
-#  **Problem:**
-#  {problem}
